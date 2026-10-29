@@ -1,8 +1,9 @@
 'use strict';
+const Log=require('./log.cjs');
 const Risk=require('./risk.cjs'),H=require('./linked-history.cjs'),X=require('./extra-venues.cjs'),ROOT='https://api.rise.trade';
 const addressOK=w=>/^0x[a-fA-F0-9]{40}$/.test(w);
 async function get(route){
- let r;try{r=await fetch(ROOT+route,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});}catch{throw Error('RISEx account connection unavailable');}
+ let r;try{r=await fetch(ROOT+route,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});}catch(e){throw Error('RISEx account connection unavailable',{cause:e});}
  if(!r.ok)throw Error('RISEx account HTTP '+r.status);
  const date=Date.parse(r.headers.get('date'));if(!Number.isFinite(date)||Math.abs(Date.now()-date)>120000)throw Error('RISEx response time unverified');
  return r.json();

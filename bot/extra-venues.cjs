@@ -1,11 +1,12 @@
 'use strict';
+const Log=require('./log.cjs');
 const D=require('./data.cjs'),Fd=require('./funding.js');
 const names=['QFEX','RISEx'],Q='https://api.qfex.com',R='https://api.rise.trade',BAR=300000;
 const n=v=>v===null||v===undefined||v===''?NaN:Number(v);
 function parts(now,tz){return Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));}
 function qSession(hours,now){
  try{const p=parts(now,hours.tz),clock=p.hour+':'+p.minute+':'+p.second;
- return (hours[p.weekday.toLowerCase()]||[]).some(s=>s.session==='open'&&clock>=s.open&&clock<s.close);}catch{return false;}
+ return (hours[p.weekday.toLowerCase()]||[]).some(s=>s.session==='open'&&clock>=s.open&&clock<s.close);}catch(e){Log.debug('QFEX market-hours parse',e);return false;}
 }
 // Conservative research window for the supported US stocks, ETFs and commodities.
 // This is a Pairdesk policy, not a claim that RISEx closes outside these hours.
@@ -68,16 +69,16 @@ function riseBook(id,m,now=Date.now()){
 function riseSnapshots(ids){
  return new Promise((resolve,reject)=>{
  let ws,done=false;const wanted=new Set(ids),out=new Map();
- const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch{}err?reject(err):resolve(out);};
+ const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch(e){Log.debug('RISEx socket close',e);}err?reject(err):resolve(out);};
  const timer=setTimeout(()=>finish(),10000);
- try{ws=new WebSocket('wss://ws.rise.trade/ws');}catch{finish(Error('RISEx WebSocket unavailable; Node 24 required'));return;}
- ws.onopen=()=>{try{ws.send(JSON.stringify({method:'subscribe',params:{channel:'orderbook',market_ids:ids.map(Number)}}));}catch{finish(Error('RISEx quote subscription failed'));}};
+ try{ws=new WebSocket('wss://ws.rise.trade/ws');}catch(e){finish(Error('RISEx WebSocket unavailable; Node 24 required',{cause:e}));return;}
+ ws.onopen=()=>{try{ws.send(JSON.stringify({method:'subscribe',params:{channel:'orderbook',market_ids:ids.map(Number)}}));}catch(e){finish(Error('RISEx quote subscription failed',{cause:e}));}};
  ws.onerror=()=>finish(Error('RISEx quote connection failed'));
  ws.onclose=()=>finish(Error('RISEx quote connection closed before snapshots'));
  ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.channel==='orderbook'&&m.type==='snapshot'){
  const id=String(m.market_id);if(!wanted.has(id))throw Error('Unexpected market');
  out.set(id,riseBook(id,m));if(out.size===wanted.size)finish();
- }}catch{finish(Error('RISEx quote snapshot rejected'));}};
+ }}catch(e){finish(Error('RISEx quote snapshot rejected',{cause:e}));}};
  });
 }
 async function quoteMany(venue,ids){

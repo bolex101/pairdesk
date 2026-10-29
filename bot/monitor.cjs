@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const Config=require('./config.cjs'),fs=require('node:fs'),path=require('node:path'),Core=require('./positions.cjs'),Store=require('./storage.cjs'),Feeds=require('./monitor-feeds.cjs'),Telegram=require('./telegram.cjs'),Wallet=require('./wallet-sync.cjs'),WalletFeeds=require('./wallet-feeds.cjs'),Performance=require('./performance.cjs'),WalletLink=require('./wallet-link.cjs');
 const dir=process.env.PAIRDESK_STATE_DIR||path.join(__dirname,'state'),chat=process.env.TELEGRAM_CHAT_ID;
 fs.mkdirSync(dir,{recursive:true,mode:0o700});
@@ -18,7 +19,7 @@ const pumpFriends=Friends.runner(s,save,bot,dir);
 async function flush(){
  for(const event of s.outbox.slice(0,10)){
   try{await bot.send(event.text+'\nEvent '+event.id,event.replyMarkup);}
-  catch{console.error('Notification pending; delivery will retry');break;}
+  catch(e){console.error('Notification pending; delivery will retry ('+Log.safe(e)+')');break;}
   s.outbox=s.outbox.filter(e=>e.id!==event.id);save();
  }
 }
@@ -56,10 +57,10 @@ async function flush(){
    for(const u of updates){
     if(!Friends.handle(s,u,chat,dir,walletConfig))Core.handle(s,u,chat,id=>Store.loadSignal(dir,id),Date.now(),(text,reply)=>{if(Friends.admin(s,text,reply))return true;if(text==='/help'||text==='/start'){reply(Core.HELP+'\n\nOWNER ACCESS CONTROLS\n/friends — requests and approvals\n/approve USER_ID — approve friend\n/revoke USER_ID — revoke and pause friend monitoring');return true;}if(WalletLink.command(s,text,reply,id=>Store.loadSignal(dir,id),walletConfig.enabled,Date.now()))return true;if(text==='/performance'||text.startsWith('/performance ')){const name=text.split(/\s+/)[1],venue=['Popdex','Arcus','Variational','Ondo','Phoenix','QFEX','RISEx'].find(v=>v.toLowerCase()===name?.toLowerCase());reply(name&&!venue?'Use /performance, /performance Popdex, /performance Arcus, /performance Variational, /performance Ondo, /performance Phoenix, /performance QFEX or /performance RISEx.':Performance.report(s,venue));return true;}if(text!=='/wallets')return false;reply(walletConfig.enabled?Wallet.status(s):'Wallet sync is disabled.');return true;});
     save(); // Commit command and offset together before delivery.
-    if(u.callback_query?.id){try{await bot.api('answerCallbackQuery',{callback_query_id:u.callback_query.id});}catch{console.error('Button acknowledgement unavailable; registration result is preserved');}}
+    if(u.callback_query?.id){try{await bot.api('answerCallbackQuery',{callback_query_id:u.callback_query.id});}catch(e){console.error('Button acknowledgement unavailable; registration result is preserved ('+Log.safe(e)+')');}}
    }
-  }catch{console.error('Telegram polling unavailable; monitoring continues');await new Promise(r=>setTimeout(r,3000));}
+  }catch(e){console.error('Telegram polling unavailable; monitoring continues ('+Log.safe(e)+')');await new Promise(r=>setTimeout(r,3000));}
   await flush();
  }
-})().catch(()=>{console.error('Position monitor stopped; check configuration/state or webhook. No credentials displayed.');process.exitCode=1;});
+})().catch(e=>{console.error('Position monitor stopped; check configuration/state or webhook. No credentials displayed. ('+Log.safe(e)+')');process.exitCode=1;});
 

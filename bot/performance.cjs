@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const fs=require('node:fs'),path=require('node:path'),Store=require('./storage.cjs'),Core=require('./positions.cjs');
 const VERSION='paper-v1-confirm1',MAX_GAP=120000;
 // Funding rates at signal time, frozen for the paper trade. Unknown stays explicitly unknown.
@@ -16,7 +17,7 @@ function ingest(s,dir,now=Date.now()){
  for(const file of fs.readdirSync(folder).filter(f=>/^[a-f0-9]{12}\.json$/.test(f))){
   const id=file.slice(0,12);if(st.records[id])continue;
   // Never silently turn malformed input into a reported win or loss.
-  let item;try{item=JSON.parse(fs.readFileSync(path.join(folder,file),'utf8'));}catch{continue;}
+  let item;try{item=JSON.parse(fs.readFileSync(path.join(folder,file),'utf8'));}catch(e){Log.warn('Performance: skipping unreadable receipt '+file,e);continue;}
   if(item.id!==id||!valid(item.plan)){st.records[id]={id,status:'excluded',reason:'Invalid saved signal metadata'};continue;}
   const p=item.plan;
   const r={id,signalId:id,plan:p,score:p.research.score,venue:p.venue,status:'open',enteredAt:p.createdAt,deadline:p.createdAt+p.maxHoldMinutes*60000,lastSeen:p.createdAt,priceA:p.a.entry,priceB:p.b.entry,notionalA:p.a.units*p.a.entry,notionalB:p.b.units*p.b.entry,observations:0};

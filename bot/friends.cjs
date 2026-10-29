@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const fs=require('node:fs'),path=require('node:path'),C=require('./positions.cjs'),Store=require('./storage.cjs'),W=require('./wallet-sync.cjs'),L=require('./wallet-link.cjs'),Feeds=require('./monitor-feeds.cjs'),WF=require('./wallet-feeds.cjs'),PF=require('./phoenix-wallet.cjs'),OF=require('./ondo-wallet.cjs');
 const ID=/^[1-9]\d{0,15}$/,venues=['Popdex','Arcus','Phoenix','Ondo','RISEx'];
 const HELP='PRIVATE FRIEND MONITORING\n/open SIGNAL_ID — register fills\n/wallet VENUE ADDRESS — add a public wallet (Popdex, Arcus, Phoenix, Ondo or RISEx)\n/wallets — your wallet sync\n/link SIGNAL_ID — link existing wallet legs\n/positions — your trades only\n/close POSITION_ID — stop monitoring after closing both legs\n/cancel — cancel registration\n/status — your monitor status\nQFEX: ask the owner to install your separate view-only key. Never send API secrets or seed phrases here. No orders placed.';
@@ -8,7 +9,7 @@ function plan(dir,id){
  const out={};for(const k of ['ready','venue','beta','alpha','sd','tpZ','stopZ','maxHoldMinutes','createdAt','expiresAt'])out[k]=p[k];
  out.a={id:p.a.id,side:p.a.side};out.b={id:p.b.id,side:p.b.side};return out;
 }
-function plans(dir){const folder=path.join(dir,'shared-signals');return fs.existsSync(folder)?fs.readdirSync(folder).filter(f=>/^[a-f0-9]{12}\.json$/.test(f)).flatMap(f=>{try{const p=plan(dir,f.slice(0,12));return p?[{id:f.slice(0,12),plan:p}]:[];}catch{return [];}}):[];}
+function plans(dir){const folder=path.join(dir,'shared-signals');return fs.existsSync(folder)?fs.readdirSync(folder).filter(f=>/^[a-f0-9]{12}\.json$/.test(f)).flatMap(f=>{try{const p=plan(dir,f.slice(0,12));return p?[{id:f.slice(0,12),plan:p}]:[];}catch(e){Log.warn('Skipping unreadable shared signal '+f,e);return [];}}):[];}
 function admin(s,text,reply,now=Date.now()){
  const args=text.split(/\s+/),action=args[0];
  if(!['/friends','/approve','/revoke'].includes(action))return false;
@@ -82,14 +83,14 @@ async function snapshots(m,id){
    const results=await WF.fetchAccounts({enabled:true,address:w.address,popdex:venue==='Popdex',arcusAccountIndices:venue==='Arcus'?[0,1,2,3,4,5,6,7,8,9]:[]});
    out.push(...results);
   }else if(venue==='Phoenix')out.push(...await PF.fetchAccounts({address:w.address,index:0,subaccounts:[0,1]}));
-  else if(venue==='RISEx'){try{out.push(await require('./risex-wallet.cjs').fetchAccount(w.address));}catch{out.push({account:'RISEx',venue:'RISEx',ok:false,at:Date.now(),rows:[]});}}
-  else if(venue==='QFEX'){try{const Q=require('./qfex-wallet.cjs');out.push(await Q.fetchAccount(w,Q.credentials('qfex-friend-'+id)));}catch{out.push({account:'QFEX',venue:'QFEX',ok:false,at:Date.now(),rows:[]});}}
+  else if(venue==='RISEx'){try{out.push(await require('./risex-wallet.cjs').fetchAccount(w.address));}catch(e){Log.warn('Friend RISEx wallet check unavailable',e);out.push({account:'RISEx',venue:'RISEx',ok:false,at:Date.now(),rows:[]});}}
+  else if(venue==='QFEX'){try{const Q=require('./qfex-wallet.cjs');out.push(await Q.fetchAccount(w,Q.credentials('qfex-friend-'+id)));}catch(e){Log.warn('Friend QFEX wallet check unavailable',e);out.push({account:'QFEX',venue:'QFEX',ok:false,at:Date.now(),rows:[]});}}
   else if(venue==='Ondo'){
    try{
     if(!process.env.CREDENTIALS_DIRECTORY)throw Error('Missing friend credentials');
     const key=JSON.parse(fs.readFileSync(path.join(process.env.CREDENTIALS_DIRECTORY,'ondo-friend-'+id),'utf8'));
     out.push(await OF.fetchAccount(w.address,key));
-   }catch{out.push({account:'Ondo',venue:'Ondo',ok:false,at:Date.now(),rows:[]});}
+   }catch(e){Log.warn('Friend Ondo wallet check unavailable',e);out.push({account:'Ondo',venue:'Ondo',ok:false,at:Date.now(),rows:[]});}
   }
  }
  return out;
@@ -118,7 +119,7 @@ function runner(s,save,bot,dir){
    const lookup=await Feeds.quotes(open.filter(p=>!p.walletSuspended));if(!valid())return;
    for(const p of open)C.evaluate(m.state,p,lookup(p),Date.now());
    m.state.lastCycle=Date.now();save();await flush(m,id,epoch);
-  }catch{console.error('Friend monitoring/delivery unavailable; will retry. No credentials displayed.');}
+  }catch(e){console.error('Friend monitoring/delivery unavailable; will retry. No credentials displayed. ('+Log.safe(e)+')');}
   finally{active.delete(id);}
  }
  return ()=>{

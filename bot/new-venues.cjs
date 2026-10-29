@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const D=require('./data.cjs'),X=require('./extra-venues.cjs'),Fd=require('./funding.js'),Sol=require('./solana.cjs');
 const ONDO='https://api.ondoperps.xyz',PHOENIX='https://perp-api.phoenix.trade';
 const names=['Ondo','Phoenix',...X.names];
@@ -50,9 +51,9 @@ async function quote(venue,id){
  throw Error('Unsupported venue');
 }
 async function enrich(venue,rows){
- if(venue==='RISEx'){let quotes=new Map();try{quotes=await X.quoteMany(venue,rows.map(m=>m.id));}catch{}return rows.map(m=>({...m,...(quotes.get(m.id)||{bid:null,ask:null,spread:null,quoteTime:null})}));}
+ if(venue==='RISEx'){let quotes=new Map();try{quotes=await X.quoteMany(venue,rows.map(m=>m.id));}catch(e){Log.warn('RISEx quotes unavailable',e);}return rows.map(m=>({...m,...(quotes.get(m.id)||{bid:null,ask:null,spread:null,quoteTime:null})}));}
  const out=[];let next=0;
- await Promise.all(Array.from({length:3},async()=>{while(next<rows.length){const m=rows[next++];try{out.push({...m,...await quote(venue,m.id)});}catch{out.push({...m,bid:null,ask:null,spread:null,quoteTime:null});}}}));return out;
+ await Promise.all(Array.from({length:3},async()=>{while(next<rows.length){const m=rows[next++];try{out.push({...m,...await quote(venue,m.id)});}catch(e){Log.debug(venue+' '+m.id+' quote unavailable',e);out.push({...m,bid:null,ask:null,spread:null,quoteTime:null});}}}));return out;
 }
 function candles(id,data,now=Date.now()){
  if(data?.symbol!==id||data.timeframe!=='5m'||!Array.isArray(data.bars)||data.page?.hasMore!==false)throw Error('Invalid/incomplete Phoenix candles');

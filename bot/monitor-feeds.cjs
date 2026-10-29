@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const D=require('./data.cjs'),N=require('./new-venues.cjs');
 async function quotes(positions){
  const out=new Map(),want=new Map();
@@ -18,7 +19,7 @@ async function quotes(positions){
  if(rise.length)tasks.push(async()=>{for(const [id,q] of await N.quoteMany('RISEx',rise.map(m=>m.id)))out.set('RISEx:'+id,q);});
  for(const m of want.values())if(N.names.includes(m.venue)&&m.venue!=='RISEx')tasks.push(async()=>{out.set(m.venue+':'+m.id,await N.quote(m.venue,m.id));});
  // Bound public endpoint concurrency; a failed quote remains unavailable rather than using a cache.
- let index=0;await Promise.all(Array.from({length:Math.min(4,tasks.length)},async()=>{while(index<tasks.length){const task=tasks[index++];try{await task();}catch{}}}));
+ let index=0;await Promise.all(Array.from({length:Math.min(4,tasks.length)},async()=>{while(index<tasks.length){const task=tasks[index++];try{await task();}catch(e){Log.warn('Monitor quote fetch failed; affected trades keep stale-price handling',e);}}}));
  return p=>({a:out.get(p.plan.venue+':'+p.plan.a.id),b:out.get(p.plan.venue+':'+p.plan.b.id)});
 }
 module.exports={quotes};

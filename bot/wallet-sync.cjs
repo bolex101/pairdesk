@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0,16);
 const key=r=>r.symbol+':'+r.side;
@@ -7,7 +8,7 @@ const fresh=(x,now)=>x?.ok&&now-x.at<=120000&&x.at<=now+5000;
 function plans(dir){
  const folder=path.join(dir,'signals');if(!fs.existsSync(folder))return [];
  return fs.readdirSync(folder).filter(f=>/^[a-f0-9]{12}\.json$/.test(f)).flatMap(f=>{
-  try{const p=JSON.parse(fs.readFileSync(path.join(folder,f),'utf8'));return valid(p)?[{id:f.slice(0,12),plan:p}]:[];}catch{return [];}
+  try{const p=JSON.parse(fs.readFileSync(path.join(folder,f),'utf8'));return valid(p)?[{id:f.slice(0,12),plan:p}]:[];}catch(e){Log.warn('Skipping unreadable signal plan '+f,e);return [];}
  });
 }
 function valid(p){return p?.ready&&['Arcus','Popdex','Phoenix','Ondo','QFEX','RISEx'].includes(p.venue)&&p.a?.id!==p.b?.id&&[p.a,p.b].every(l=>typeof l?.id==='string'&&['LONG','SHORT'].includes(l.side))&&p.a.side!==p.b.side&&[p.beta,p.alpha,p.sd,p.tpZ,p.stopZ,p.maxHoldMinutes,p.createdAt,p.expiresAt].every(Number.isFinite)&&p.beta>0&&p.sd>0&&p.maxHoldMinutes>0;}

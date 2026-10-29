@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const D=require('./data.cjs'),Risk=require('./risk.cjs');
 const num=v=>typeof v==='number'||typeof v==='string'&&v.trim()!==''?Number(v):NaN;
 const addressOK=(a,w)=>typeof a==='string'&&a.toLowerCase()===w.toLowerCase();
@@ -54,25 +55,25 @@ async function fetchAccounts(config){
  const tasks=[];
  if(config.popdex!==false)tasks.push(async()=>{
   try{return popdex(await D.get('https://api.popdex.xyz/api/v1/account/'+w+'/positions'),w,Date.now());}
-  catch{return {account:'Popdex',venue:'Popdex',ok:false,at:Date.now(),rows:[]};}
+  catch(e){Log.warn('Popdex wallet check unavailable',e);return {account:'Popdex',venue:'Popdex',ok:false,at:Date.now(),rows:[]};}
  });
  for(const index of config.arcusAccountIndices){
   if(!Number.isInteger(index)||index<0||index>9)throw Error('Invalid subaccount');
   tasks.push(async()=>{
    try{
     const snapshot=arcus(await D.get('https://api.arcus.xyz/v1/positions?'+new URLSearchParams({address:w,accountIndex:String(index)})),w,index,Date.now());
-    if(snapshot.rows.length)try{withFills(snapshot,await D.get('https://api.arcus.xyz/v1/fills?'+new URLSearchParams({address:w,accountIndex:String(index),limit:'1000'})),Date.now());}catch{}
+    if(snapshot.rows.length)try{withFills(snapshot,await D.get('https://api.arcus.xyz/v1/fills?'+new URLSearchParams({address:w,accountIndex:String(index),limit:'1000'})),Date.now());}catch(e){Log.warn('Arcus fills unavailable; entry times left unknown',e);}
     return snapshot;
-   }catch{return {account:'Arcus:'+index,venue:'Arcus',ok:false,at:Date.now(),rows:[]};}
+   }catch(e){Log.warn('Arcus wallet check unavailable',e);return {account:'Arcus:'+index,venue:'Arcus',ok:false,at:Date.now(),rows:[]};}
   });
  }
  if(config.phoenix?.enabled)tasks.push(async()=>({phoenixAccounts:await require('./phoenix-wallet.cjs').fetchAccounts(config.phoenix)}));
  if(config.ondo?.enabled)tasks.push(async()=>{
   try{return await require('./ondo-wallet.cjs').fetchAccount(w);}
-  catch{return {account:'Ondo',venue:'Ondo',ok:false,at:Date.now(),rows:[]};}
+  catch(e){Log.warn('Ondo wallet check unavailable',e);return {account:'Ondo',venue:'Ondo',ok:false,at:Date.now(),rows:[]};}
  });
- if(config.risex?.enabled)tasks.push(async()=>{try{return await require('./risex-wallet.cjs').fetchAccount(config.risex.address);}catch{return {account:'RISEx',venue:'RISEx',ok:false,at:Date.now(),rows:[]};}});
- if(config.qfex?.enabled)tasks.push(async()=>{try{return await require('./qfex-wallet.cjs').fetchAccount(config.qfex);}catch{return {account:'QFEX',venue:'QFEX',ok:false,at:Date.now(),rows:[]};}});
+ if(config.risex?.enabled)tasks.push(async()=>{try{return await require('./risex-wallet.cjs').fetchAccount(config.risex.address);}catch(e){Log.warn('RISEx wallet check unavailable',e);return {account:'RISEx',venue:'RISEx',ok:false,at:Date.now(),rows:[]};}});
+ if(config.qfex?.enabled)tasks.push(async()=>{try{return await require('./qfex-wallet.cjs').fetchAccount(config.qfex);}catch(e){Log.warn('QFEX wallet check unavailable',e);return {account:'QFEX',venue:'QFEX',ok:false,at:Date.now(),rows:[]};}});
  const out=[];let next=0;
  await Promise.all(Array.from({length:3},async()=>{while(next<tasks.length)out.push(await tasks[next++]());}));
  return out.flatMap(x=>x.phoenixAccounts||[x]);

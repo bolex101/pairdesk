@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const D=require('./data.cjs'),Risk=require('./risk.cjs'),Sol=require('./solana.cjs');
 const BASE='https://perp-api.phoenix.trade';
 const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim())?Number(v):NaN;
@@ -74,6 +75,6 @@ async function fetchAccounts(config){
    }
   }
   return accounts;
- }catch{console.warn('Phoenix wallet check unavailable: '+stage+'. Freshness checks remain enforced; no closure inferred.');return unavailable();}
+ }catch(e){console.warn('Phoenix wallet check unavailable: '+stage+' ('+Log.safe(e)+'). Freshness checks remain enforced; no closure inferred.');return unavailable();}
 }
 module.exports={parse,withHistory,fetchAccounts};
