@@ -1,4 +1,4 @@
-const fs=require('node:fs'),path=require('node:path');
+const Config=require('./config.cjs'),fs=require('node:fs'),path=require('node:path');
 const F=require('./feeds.js'),S=require('./scan-engine.js'),E=require('./engine.js'),A=require('./alert-rules.cjs'),D=require('./data.cjs'),Plan=require('./trade-plan.cjs'),Store=require('./storage.cjs'),Buttons=require('./buttons.cjs'),Performance=require('./performance.cjs'),N=require('./new-venues.cjs');
 const planSettings=Plan.settings(JSON.parse(fs.readFileSync(path.join(__dirname,'plan-config.json'),'utf8')));
 const dir=process.env.PAIRDESK_STATE_DIR||path.join(__dirname,'state'),send=process.argv.includes('--send');
@@ -49,7 +49,7 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
    if(N.names.includes(venue))for(const m of await N.enrich(venue,universe.map(r=>fresh.get(r.id)).filter(Boolean)))fresh.set(m.id,m);
    const results=S.pairs(universe.map(r=>fresh.get(r.id)).filter(Boolean))
     .filter(p=>histories.has(p.a.id)&&histories.has(p.b.id))
-    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E,Date.now(),3,{exitZ:planSettings.exitZ,maxHoldMinutes:planSettings.maxHoldMinutes}));
+    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E,Date.now(),undefined,{exitZ:planSettings.exitZ,maxHoldMinutes:planSettings.maxHoldMinutes}));
    // Data outages and warm-up are not observed signal exits; preserve alert deduplication state.
    const observable=results.filter(p=>!p.reasons.some(r=>/Fewer than|older than|Quote older|Fresh two-sided|Incomplete or future|Too many gaps|Execution cost incomplete/.test(r)));
    const planned=observable.map(p=>({...p,plan:Plan.build(p,venue,Date.now(),planSettings)}));

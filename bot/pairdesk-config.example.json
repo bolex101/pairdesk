@@ -1,0 +1,28 @@
+{
+ "thresholds": {
+  "minAlertScore": 65,
+  "minConfirmZ": 1,
+  "entryZMin": 1.5,
+  "entryZMax": 3,
+  "slippageBps": 3,
+  "minBars": 240,
+  "fitWindow": 120,
+  "adfLags": 1,
+  "adfLevel": 0.1,
+  "minHalfLife": 5,
+  "maxHalfLife": 120,
+  "minCorrelation": 0.5,
+  "minHalfCorrelation": 0.3,
+  "maxQuoteAgeMs": 120000,
+  "fundingIncomeCreditMax": 0.5,
+  "requireKnownFunding": false,
+  "liquidationAlertPct": 15,
+  "hedgeDriftAlertPct": 10,
+  "heartbeatStaleMinutes": 30,
+  "fundingIntervalSeconds": {
+   "Arcus": null,
+   "Ondo": null,
+   "Popdex": null
+  }
+ }
+}

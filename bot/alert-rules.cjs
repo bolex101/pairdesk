@@ -1,11 +1,13 @@
 const Plan=require('./trade-plan.cjs'),Fd=require('./funding.js');
-const MIN_ALERT_SCORE=65;
+const Config=require('./config.cjs');
+// Effective alert floor (default 65; override via pairdesk-config.json).
+const MIN_ALERT_SCORE=Config.get().minAlertScore;
 // Pure alert policy shared by Mac/server runners. No network or secrets.
 const keyFor=(venue,pair)=>venue+':'+[pair.a.id,pair.b.id].sort().join('/');
 function selectAlerts(venue,results,previous={},now=Date.now(),cooldown=3600000){
  const next={...previous},alerts=[];
  for(const p of results){const key=keyFor(venue,p),old=previous[key]||{},fresh=p.rows?.length&&now-p.rows.at(-1).t<=900000;
- const qualifying=p.setup===true&&p.eligible===true&&fresh&&Number.isFinite(p.score)&&p.score>=MIN_ALERT_SCORE;
+ const qualifying=p.setup===true&&p.eligible===true&&fresh&&Number.isFinite(p.score)&&p.score>=Config.get().minAlertScore;
  const side=p.z>0?'Short '+p.a.id+' / Long '+p.b.id:'Long '+p.a.id+' / Short '+p.b.id;
  // Re-arm only after an observed nonqualifying scan. Missing/failed scans are not resets.
  const eligibleToSend=qualifying&&(!old.active||old.side!==side)&&(!old.sentAt||now-old.sentAt>=cooldown);

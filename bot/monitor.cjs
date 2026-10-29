@@ -1,4 +1,4 @@
-const fs=require('node:fs'),path=require('node:path'),Core=require('./positions.cjs'),Store=require('./storage.cjs'),Feeds=require('./monitor-feeds.cjs'),Telegram=require('./telegram.cjs'),Wallet=require('./wallet-sync.cjs'),WalletFeeds=require('./wallet-feeds.cjs'),Performance=require('./performance.cjs'),WalletLink=require('./wallet-link.cjs');
+const Config=require('./config.cjs'),fs=require('node:fs'),path=require('node:path'),Core=require('./positions.cjs'),Store=require('./storage.cjs'),Feeds=require('./monitor-feeds.cjs'),Telegram=require('./telegram.cjs'),Wallet=require('./wallet-sync.cjs'),WalletFeeds=require('./wallet-feeds.cjs'),Performance=require('./performance.cjs'),WalletLink=require('./wallet-link.cjs');
 const dir=process.env.PAIRDESK_STATE_DIR||path.join(__dirname,'state'),chat=process.env.TELEGRAM_CHAT_ID;
 fs.mkdirSync(dir,{recursive:true,mode:0o700});
 const file=path.join(dir,'positions.json'),bot=Telegram.client(process.env.TELEGRAM_BOT_TOKEN,chat);
