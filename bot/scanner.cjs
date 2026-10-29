@@ -1,4 +1,4 @@
-const Log=require('./log.cjs');
+const Log=require('./log.cjs'),AlertLog=require('./alert-log.cjs');
 const Config=require('./config.cjs'),fs=require('node:fs'),path=require('node:path');
 const F=require('./feeds.js'),S=require('./scan-engine.js'),E=require('./engine.js'),A=require('./alert-rules.cjs'),D=require('./data.cjs'),Plan=require('./trade-plan.cjs'),Store=require('./storage.cjs'),Buttons=require('./buttons.cjs'),Performance=require('./performance.cjs'),N=require('./new-venues.cjs');
 const planSettings=Plan.settings(JSON.parse(fs.readFileSync(path.join(__dirname,'plan-config.json'),'utf8')));
@@ -80,7 +80,8 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
      // Persist before delivery to suppress duplicates following an ambiguous network timeout.
      state[a.key].sentAt=Date.now();save();
      let signalId;
-     try{signalId=Store.signal(dir,a.plan);await telegram(A.message(a)+'\n\nSignal ID: '+signalId+'\nAfter filling BOTH legs, tap Register trade below (or use /open '+signalId+').',Buttons.keyboard(signalId,a.venue));Performance.receipt(dir,signalId,a.plan);console.log('Alert delivered: '+a.key);}
+     try{signalId=Store.signal(dir,a.plan);await telegram(A.message(a)+'\n\nSignal ID: '+signalId+'\nAfter filling BOTH legs, tap Register trade below (or use /open '+signalId+').',Buttons.keyboard(signalId,a.venue));Performance.receipt(dir,signalId,a.plan);console.log('Alert delivered: '+a.key+' score '+a.pair.score);
+      try{AlertLog.append(dir,a,signalId);}catch(e){console.error('Alert log append failed (alert was delivered): '+Log.safe(e));}}
      catch(e){failures++;console.error('Alert delivery unconfirmed: '+a.key+'; suppressed until setup re-arms and cooldown expires ('+Log.safe(e)+')');}
      if(signalId)try{if(await Shared.deliver(a,signalId,dir))console.log('Shared research alert delivered: '+a.key);}
      catch(e){failures++;console.error('Shared channel delivery unconfirmed: '+a.key+'; private monitoring unchanged; no automatic retry of expired signals ('+Log.safe(e)+')');}
