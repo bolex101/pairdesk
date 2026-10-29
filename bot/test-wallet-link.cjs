@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),L=require('./wallet-link.cjs'),C=require('./positions.cjs'),B=require('./buttons.cjs'),W=require('./wallet-sync.cjs');
+const now=1793000000000,id='abcdef123456',plan={ready:true,venue:'Popdex',a:{id:'MUUSDT',side:'LONG'},b:{id:'SNDKUSDT',side:'SHORT'},beta:1,alpha:0,sd:.01,tpZ:-.3,stopZ:-4,maxHoldMinutes:120,createdAt:now-20*60000,expiresAt:now-15*60000};
+const rows=[{symbol:'MUUSDT',side:'LONG',quantity:5,price:100,enteredAt:now-300000,generation:'mu'},{symbol:'SNDKUSDT',side:'SHORT',quantity:1,price:500,enteredAt:now-290000,generation:'sndk'}];
+const state=()=>({...C.initial(),wallets:{accounts:{Popdex:{account:'Popdex',venue:'Popdex',ok:true,stable:true,at:now,rows:structuredClone(rows)}},notices:{}}});
+const command=(s,t,time=now)=>{let text,markup;L.command(s,t,(a,b)=>{text=a;markup=b;},()=>plan,true,time);return {text,markup};};
+let s=state(),preview=command(s,'/link '+id);assert.ok(preview.text.includes('LATE ENTRY'));assert.equal(Object.keys(s.positions).length,0);const nonce=s.walletLinkDraft.nonce;
+command(s,'/linkconfirm '+nonce);const p=Object.values(s.positions)[0];assert.equal(p.priceA,100);assert.equal(p.notionalA,500);assert.equal(p.deadline,rows[0].enteredAt+7200000);assert.ok(p.wallet);assert.equal(s.walletLinkDraft,null);
+command(s,'/linkconfirm '+nonce);assert.equal(Object.keys(s.positions).length,1);
+const snap={...s.wallets.accounts.Popdex,at:now+30000,rows:structuredClone(rows)};W.reconcile(s,[snap],[{id,plan}],C.queue,now+30000);assert.equal(p.walletSuspended,false);assert.equal(Object.keys(s.positions).length,1);
+s=state();command(s,'/link '+id);s.wallets.accounts.Popdex.rows[0].quantity=6;assert.ok(command(s,'/linkconfirm '+s.walletLinkDraft.nonce).text.includes('changed'));assert.equal(Object.keys(s.positions).length,0);
+s=state();command(s,'/link '+id);const expired=s.walletLinkDraft.nonce;assert.ok(command(s,'/linkconfirm '+expired,now+120001).text.includes('expired'));
+s=state();s.positions.other={id:'other',plan:{...plan,b:{id:'OTHER',side:'SHORT'}}};assert.ok(command(s,'/link '+id).text.includes('already uses'));assert.equal(s.walletLinkDraft,undefined);
+s=state();s.wallets.accounts.Popdex.rows[0].generation=null;assert.ok(command(s,'/link '+id).text.includes('No stable'));
+s=state();s.wallets.accounts.Popdex.at=now-120001;assert.ok(command(s,'/link '+id).text.includes('No stable'));
+s=state();s.positions.manual={id:'manual',signalId:id,plan,deadline:now+12345,notified:{'STOP LOSS':now}};command(s,'/link '+id);command(s,'/linkconfirm '+s.walletLinkDraft.nonce);assert.equal(s.positions.manual.deadline,now+12345);assert.equal(s.positions.manual.notified['STOP LOSS'],now);
+const cb={data:'link:'+id,from:{id:42},message:{chat:{type:'private',id:42},from:{is_bot:true,username:'pairdeskbot'}}};assert.equal(B.callbackMessage(cb,'42',now).text,'/link '+id);assert.equal(B.callbackMessage({...cb,from:{id:99}},'42',now),null);
+assert.equal(B.keyboard(id,'Arcus').inline_keyboard.length,2);assert.equal(B.keyboard(id,'Variational').inline_keyboard.length,1);
+console.log('Wallet link tests passed: late entry review/confirmation, actual fills, fixed deadline, replay protection, changed/stale fills, overlap rejection, existing registration conversion, wallet reconciliation and private callback authorization.');

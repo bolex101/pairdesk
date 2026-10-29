@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict'),A=require('./alert-rules.cjs');
+const now=Date.now(),p={a:{id:'A'},b:{id:'B'},rows:[{t:now-300000}],setup:true,eligible:true,score:80,z:2};
+let r=A.selectAlerts('Popdex',[p],{},now);assert.equal(r.alerts.length,1);
+r.next[r.alerts[0].key].sentAt=now;
+assert.equal(A.selectAlerts('Popdex',[p],r.next,now+1000).alerts.length,0);
+assert.equal(A.selectAlerts('Popdex',[{...p,eligible:false}],{},now).alerts.length,0);
+assert.equal(A.selectAlerts('Popdex',[{...p,rows:[{t:now-1000000}]}],{},now).alerts.length,0);
+assert.deepEqual(A.selectAlerts('Popdex',[],r.next,now).next,r.next);
+let reset=A.selectAlerts('Popdex',[{...p,setup:false}],r.next,now+2000);
+assert.equal(A.selectAlerts('Popdex',[p],reset.next,now+3000).alerts.length,0);
+assert.equal(A.selectAlerts('Popdex',[{...p,rows:[{t:now+3600000}]}],reset.next,now+3900000).alerts.length,1);
+console.log('Alert policy checks passed');

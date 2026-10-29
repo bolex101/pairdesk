@@ -1,0 +1,36 @@
+{
+  "enabled": false,
+  "address": "0xYOUR_PUBLIC_WALLET_ADDRESS",
+  "popdex": true,
+  "arcusAccountIndices": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "phoenix": {
+    "enabled": false,
+    "address": "YOUR_SOLANA_ADDRESS",
+    "index": 0,
+    "subaccounts": [
+      0,
+      1
+    ]
+  },
+  "ondo": {
+    "enabled": false
+  },
+  "risex": {
+    "enabled": false,
+    "address": "0xYOUR_PUBLIC_WALLET_ADDRESS"
+  },
+  "qfex": {
+    "enabled": false
+  }
+}

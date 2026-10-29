@@ -1,0 +1,18 @@
+const A=require('node:assert/strict'),O=require('./ondo-wallet.cjs'),crypto=require('node:crypto');
+const now=1793058360000,w='0x1111111111111111111111111111111111111111';
+const raw={success:true,result:[{market:'AAA-USD.P',direction:'long',netQuantity:'5',averageEntryPrice:'100'},{market:'BBB-USD.P',direction:'short',netQuantity:'4',averageEntryPrice:'125'}]};
+const fill=(id,market,size,side,direction)=>({id,market,size:String(size),side,direction,time:new Date(now-30000).toISOString()});
+const a=()=>O.parse(raw,w,now),f=fill('a','AAA-USD.P',5,'buy','open long'),b=fill('b','BBB-USD.P',4,'sell','openShort');
+A.equal(O.withHistory(a(),[f,b],now).rows[1].generation,'b');
+A.equal(O.withHistory(a(),[fill('partial','AAA-USD.P',5,'sell','closeLong'),{...f,size:'10'}],now).rows[0].generation,'a');
+A.equal(O.withHistory(a(),[{...f,size:'2'}],now).rows[0].generation,null);
+A.equal(O.withHistory(a(),[{...f,time:new Date(now+10000).toISOString()}],now).rows[0].generation,null);
+A.equal(O.withHistory(a(),[{...f,side:'sell'}],now).rows[0].generation,null);
+A.equal(O.withHistory(a(),[{...f,size:'8',direction:'flipShortToLong'}],now).rows[0].generation,'a');
+A.throws(()=>O.withHistory(a(),[f,f],now));A.throws(()=>O.parse({success:true,result:null},w,now));
+O.identity({success:true,result:{authType:'web3',accountState:'open',identifier:w,accountID:'1'}},w);
+A.throws(()=>O.identity({success:true,result:{authType:'web3',accountState:'open',identifier:'wrong',accountID:'1'}},w));
+const key={keyId:'test-key',secretKey:'test-secret'},route='/v1/perps/fills?limit=1000';
+A.equal(O.headers(key,route,now)['ONDO-SIGN'],crypto.createHmac('sha256','test-secret').update(now+'GET'+route).digest('hex'));
+A.throws(()=>O.headers(key,'/v1/perps/orders',now));
+console.log('Ondo checks passed: signed GET-only access, wallet identity, sizes, fill reconstruction, partial exits, flips, truncation and malformed responses.');

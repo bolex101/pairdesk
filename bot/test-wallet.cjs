@@ -1,0 +1,42 @@
+const assert=require('node:assert/strict'),W=require('./wallet-sync.cjs'),F=require('./wallet-feeds.cjs'),C=require('./positions.cjs');
+const now=1792535000000,address='0x1111111111111111111111111111111111111111';
+const plan={ready:true,venue:'Popdex',a:{id:'AAA',side:'LONG'},b:{id:'BBB',side:'SHORT'},alpha:0,beta:1,sd:.01,tpZ:-.3,stopZ:-4,maxHoldMinutes:120,createdAt:now-60000,expiresAt:now+240000};
+const rows=[{symbol:'AAA',side:'LONG',quantity:5,price:100,enteredAt:now-30000,generation:'a1'},{symbol:'BBB',side:'SHORT',quantity:4,price:125,enteredAt:now-20000,generation:'b1'}];
+const snap=(t=now,r=rows,extra={})=>({account:'Popdex',venue:'Popdex',ok:true,at:t,revision:String(t),rows:structuredClone(r),...extra});
+const saved=[{id:'abcdef012345',plan}];
+function cycle(s,t,r=rows,extra={},signals=saved){W.reconcile(s,[snap(t,r,extra)],signals,C.queue,t);}
+function imported(){const s=C.initial();cycle(s,now);assert.equal(Object.keys(s.positions).length,0);cycle(s,now+30000);assert.equal(Object.keys(s.positions).length,1);return s;}
+const s=imported(),p=Object.values(s.positions)[0],deadline=p.deadline;
+assert.equal(p.priceA,100);assert.equal(p.notionalA,500);assert.equal(p.enteredAt,now-30000);
+cycle(s,now+60000,[{...rows[0],quantity:2},rows[1]]);assert.equal(p.notionalA,200);assert.equal(p.deadline,deadline);assert.equal(p.plan.tpZ,plan.tpZ);
+cycle(s,now+90000,[],{ok:false});assert.equal(p.closedAt,undefined);assert.equal(p.walletSuspended,true);
+const before=s.outbox.length;C.evaluate(s,p,{a:{bid:100,ask:100,quoteTime:now+90000},b:{bid:100,ask:100,quoteTime:now+90000}},now+90000);assert.equal(s.outbox.length,before);
+cycle(s,now+120000,[]);assert.equal(p.closedAt,undefined);
+cycle(s,now+150000,[],{ok:false});cycle(s,now+180000,[]);assert.equal(p.closedAt,undefined);
+cycle(s,now+210000,[]);assert.equal(p.closedAt,now+210000);
+cycle(s,now+240000);cycle(s,now+270000);assert.equal(Object.keys(s.positions).length,1,'Closed exposure cannot be reimported');
+const one=imported(),op=Object.values(one.positions)[0];cycle(one,now+60000,[rows[0]]);cycle(one,now+90000,[rows[0]]);assert.ok(op.walletSuspended);assert.equal(op.closedAt,undefined);
+cycle(one,now+120000);assert.equal(op.walletSuspended,false);
+const ambiguous=C.initial(),multiple=[...saved,{id:'abcdef012346',plan}];cycle(ambiguous,now,rows,{},multiple);cycle(ambiguous,now+30000,rows,{},multiple);assert.equal(Object.keys(ambiguous.positions).length,0);
+assert.ok(ambiguous.outbox.some(e=>e.text.includes('UNMATCHED')));
+const restart=JSON.parse(JSON.stringify(imported()));cycle(restart,now+60000);assert.equal(Object.keys(restart.positions).length,1,'Restart must not duplicate imports');
+const unknown=C.initial();cycle(unknown,now,rows.map(r=>({...r,generation:null})));cycle(unknown,now+30000,rows.map(r=>({...r,generation:null})));assert.equal(Object.keys(unknown.positions).length,0);
+const stale=imported(),sp=Object.values(stale.positions)[0];W.reconcile(stale,[snap(now,[])],saved,C.queue,now+180000);assert.equal(sp.closedAt,undefined);assert.ok(sp.walletSuspended);
+const cached=imported(),cp=Object.values(cached.positions)[0];cycle(cached,now+60000,[],{revision:'cache'});cycle(cached,now+90000,[],{revision:'cache'});assert.equal(cp.closedAt,undefined);cycle(cached,now+120000,[],{revision:'next'});assert.ok(cp.closedAt);
+const duplicate=imported(),dp=Object.values(duplicate.positions)[0];cycle(duplicate,now+60000,[rows[0],rows[0]]);assert.ok(dp.walletSuspended);assert.equal(dp.closedAt,undefined);
+const manual=C.initial();manual.positions.manual={id:'manual',signalId:saved[0].id,plan:structuredClone(plan),priceA:99,priceB:125,notionalA:495,notionalB:500,enteredAt:now-25000,deadline:now+100000,notified:{}};cycle(manual,now);cycle(manual,now+30000);assert.equal(Object.keys(manual.positions).length,1);assert.ok(manual.positions.manual.wallet);assert.equal(manual.positions.manual.deadline,now+100000);
+const separate=C.initial(),ap={...plan,venue:'Arcus'},as=[{id:'abcdef012345',plan:ap}];
+for(const t of [now,now+30000])W.reconcile(separate,[{...snap(t,[rows[0]]),account:'Arcus:0',venue:'Arcus'},{...snap(t,[rows[1]]),account:'Arcus:1',venue:'Arcus'}],as,C.queue,t);
+assert.equal(Object.keys(separate.positions).length,0,'Never pair different subaccounts');
+const auth=C.initial();let invoked=false;C.handle(auth,{update_id:1,message:{date:now/1000,text:'/wallets',chat:{type:'private',id:77},from:{id:77}}},'42',()=>null,now,()=>{invoked=true;return true;});assert.equal(invoked,false);
+const pop={code:'200',blockTime:String(now),blockNumber:'55',data:[{category:'Futures',symbol:'AAA',positionSide:'Long',holdQty:'5',avgOpenPrice:'100',createdAt:String(now-20000),id:'abc'}]};
+assert.equal(F.popdex(pop,address,now).rows[0].quantity,5);assert.throws(()=>F.popdex({...pop,blockTime:String(now-180000)},address,now));assert.throws(()=>F.popdex({...pop,data:[{...pop.data[0],holdQty:'bad'}]},address,now));
+const arc={positions:{14:{address:address.toLowerCase(),accountIndex:0,marketDisplayName:'AAA',side:'LONG',size:'5',averageEntryPrice:'100'}},total:1};
+const normalized=F.arcus(arc,address,0,now);assert.throws(()=>F.arcus(arc,address,1,now));assert.throws(()=>F.arcus({...arc,total:2},address,0,now));
+const fill={tradeId:'1',orderId:'o1',address,accountIndex:0,marketDisplayName:'AAA',side:'BUY',positionEffect:'OPEN_LONG',size:'5',createdAt:String((now-30000)*1000)};
+F.withFills(normalized,{fills:[fill],total:1},now);assert.equal(normalized.rows[0].generation,'o1');assert.equal(normalized.rows[0].enteredAt,now-30000);
+const bad=F.arcus(arc,address,0,now);F.withFills(bad,{fills:[{...fill,size:'6'}],total:1},now);assert.equal(bad.rows[0].generation,null);
+const wrong=F.arcus(arc,address,0,now);F.withFills(wrong,{fills:[{...fill,address:'0xwrong'}],total:1},now);assert.equal(wrong.rows[0].generation,null);
+// Missing Arcus generation is not evidence that a position has closed.
+const gen=imported(),gp=Object.values(gen.positions)[0];cycle(gen,now+60000,rows.map(r=>({...r,generation:null})));cycle(gen,now+90000,rows.map(r=>({...r,generation:null})));assert.equal(gp.closedAt,undefined);assert.ok(gp.walletSuspended);
+console.log('Wallet tests passed: strict snapshots, actual fills, unique matching, manual binding, account isolation, partial exits, stale/failure handling, two-check closure, unknown generations, restart-safe identity and private command authorization.');

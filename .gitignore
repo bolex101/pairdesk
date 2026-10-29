@@ -1,0 +1,23 @@
+# Credentials and private runtime data
+.env
+.env.*
+!.env.example
+telegram.env
+*.cred
+*.pem
+*.key
+wallet-config.json
+channel-config.json
+state/
+*-history.json
+positions*.json
+alerts.json
+status.json
+shared-signals/
+signals/
+*.log
+*.tar.gz
+*.zip
+node_modules/
+__pycache__/
+.DS_Store

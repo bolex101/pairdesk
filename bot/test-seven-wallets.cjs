@@ -1,0 +1,47 @@
+const A=require('node:assert/strict'),crypto=require('node:crypto'),Q=require('./qfex-wallet.cjs'),R=require('./risex-wallet.cjs'),H=require('./linked-history.cjs'),W=require('./wallet-sync.cjs'),C=require('./positions.cjs'),B=require('./buttons.cjs'),WF=require('./wallet-feeds.cjs'),Friends=require('./friends.cjs');
+const now=Date.now(),address='0x'+'a'.repeat(40),key={publicKey:'qfex_pub_TEST',secretKey:'qfex_secret_TEST'};
+const auth=Q.auth(key,now,'abc');A.equal(auth.signature,crypto.createHmac('sha256',key.secretKey).update('abc:'+Math.floor(now/1000)).digest('hex'));A.notEqual(Q.auth(key).nonce,Q.auth(key).nonce);
+A.throws(()=>Q.validateKey({...key,secretKey:'bad secret'}));
+const q=Q.parse({balance:{},positions:[{symbol:'NVDA-USD',position:2,average_price:100}]},now);
+A.equal(q.rows[0].quantity,2);A.equal(Q.parse({balance:{},positions:null},now).rows.length,0);A.throws(()=>Q.parse({positions:null},now));
+A.throws(()=>Q.parse({balance:{},positions:[{symbol:'NVDA-USD',position:2,average_price:NaN}]},now));
+const pos={size:'2',side:0,market_name:'NVDA/USDC',market_id:'36',avg_entry_price:'100',mark_price:'101',unrealized_pnl:'2'};
+const r=R.parse({data:{account:address,positions:[pos]}},address,now);
+A.equal(r.rows[0].symbol,'NVDA-USDC');A.throws(()=>R.parse({data:{account:'0x'+'b'.repeat(40),positions:[]}},address,now));
+A.throws(()=>R.parse({data:{account:address,positions:[{...pos,size:'2000000000000000000'}]}},address,now));
+A.throws(()=>R.parse({data:{account:address,positions:[{...pos,side:1}]}},address,now));
+const rest=[{id:'fill1',symbol:'NVDA-USD',price:100,quantity:2,side:'BUY'}],wire=[{trade_id:'fill1',symbol:'NVDA-USD',price:100,quantity:2,aggressor_side:'SELL',timestamp:(now-1000)/1000}];
+const fill=Q.joinTrades(rest,wire);A.equal(fill[0].side,'BUY');A.equal(fill[0].at,now-1000);A.throws(()=>Q.joinTrades(rest,[]));
+H.reconstruct(q,fill,now);A.equal(q.rows[0].generation,'fill1');
+const clone=()=>JSON.parse(JSON.stringify(q));
+A.equal(H.reconstruct(clone(),[],now).rows[0].generation,null);
+A.throws(()=>H.reconstruct(clone(),[fill[0],fill[0]],now));
+A.equal(H.reconstruct(clone(),[{...fill[0],price:101}],now).rows[0].generation,null);
+const partial=[{id:'exit',symbol:'NVDA-USD',side:'SELL',size:1,price:105,at:now-500},{...fill[0],size:3}];
+A.equal(H.reconstruct(clone(),partial,now).rows[0].generation,'fill1');
+const flip=[{...fill[0],size:5}];A.equal(H.reconstruct(clone(),flip,now).rows[0].generation,'fill1');
+const reversed=clone();reversed.rows[0].side='SHORT';A.equal(H.reconstruct(reversed,[{...fill[0],side:'SELL'}],now).rows[0].generation,'fill1');
+const tied=[{...fill[0],size:3},{id:'opposite',symbol:'NVDA-USD',side:'SELL',size:1,price:100,at:fill[0].at}];A.equal(H.reconstruct(clone(),tied,now).rows[0].generation,null);
+for(const venue of ['QFEX','RISEx']){
+ const state=C.initial(),plan={ready:true,venue,a:{id:'A',side:'LONG'},b:{id:'B',side:'SHORT'},beta:1,alpha:0,sd:.01,tpZ:-.3,stopZ:-4,maxHoldMinutes:120,createdAt:now-30000,expiresAt:now+300000};
+ const snap={account:venue,venue,ok:true,at:now-20000,rows:[{symbol:'A',side:'LONG',quantity:2,price:100,enteredAt:now-10000,generation:'a'},{symbol:'B',side:'SHORT',quantity:1,price:200,enteredAt:now-9000,generation:'b'}]};
+ W.reconcile(state,[structuredClone(snap)],[{id:'abcdef123456',plan}],C.queue,now-20000);
+ W.reconcile(state,[{...structuredClone(snap),at:now}],[{id:'abcdef123456',plan}],C.queue,now);
+ const positions=Object.values(state.positions);A.equal(positions.length,1);A.equal(positions[0].priceA,100);A.equal(positions[0].deadline,now-10000+7200000);
+ A.ok(B.keyboard('abcdef123456',venue).inline_keyboard.some(row=>row[0].text.includes('Link existing')));
+ W.reconcile(state,[{account:venue,venue,ok:false,at:now+1000,rows:[]}],[],C.queue,now+1000);A.equal(positions[0].closedAt,undefined);A.equal(positions[0].walletSuspended,true);
+ W.reconcile(state,[{account:venue,venue,ok:true,at:now+20000,rows:[]}],[],C.queue,now+20000);
+ W.reconcile(state,[{account:venue,venue,ok:true,at:now+40000,rows:[]}],[],C.queue,now+40000);A.equal(positions[0].closedAt,now+40000);
+}
+(async()=>{
+ const oldR=R.fetchAccount,oldQ=Q.fetchAccount,oldC=Q.credentials;
+ R.fetchAccount=async a=>({account:'RISEx',venue:'RISEx',ok:true,at:now,rows:[],address:a});Q.fetchAccount=async(c,k)=>{if(c.keyFingerprint!=='owner'&&k?.publicKey!=='friend')throw Error();return {account:'QFEX',venue:'QFEX',ok:true,at:now,rows:[]};};
+ const accounts=await WF.fetchAccounts({enabled:true,address,popdex:false,arcusAccountIndices:[],risex:{enabled:true,address},qfex:{enabled:true,keyFingerprint:'owner'}});
+ A.equal(accounts.length,2);A.ok(accounts.every(a=>a.ok));
+ Q.credentials=name=>{A.equal(name,'qfex-friend-73');return {publicKey:'friend'};};
+ const snapshots=await Friends.snapshots({wallets:{QFEX:{enabled:true,keyFingerprint:'friend'},RISEx:{enabled:true,address}}},'73');
+ A.equal(snapshots.length,2);A.ok(snapshots.every(a=>a.ok));
+ Q.credentials=()=>{throw Error('Missing');};A.equal((await Friends.snapshots({wallets:{QFEX:{enabled:true}}},'73'))[0].ok,false);
+ R.fetchAccount=oldR;Q.fetchAccount=oldQ;Q.credentials=oldC;
+ console.log('Seven-wallet checks passed: auth, identity, units, actual fill timestamps, cost basis, partial exits/flips, truncated history, matching, outage safety, closure, private friend key routing.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

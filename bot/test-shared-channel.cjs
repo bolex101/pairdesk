@@ -1,0 +1,21 @@
+const A=require('node:assert/strict'),S=require('./shared-channel.cjs'),C=require('./positions.cjs'),B=require('./buttons.cjs');
+const id='-1001234567890',secret='PRIVATE_WALLET_PNL_SENTINEL';
+const a={venue:'Ondo',wallet:secret,pair:{score:83,z:2,confirm:1.4,corr:.8,half:60,edge:30,cost:10,wallet:secret},plan:{ready:true,a:{id:'NVDA-USD.P',side:'SHORT',entry:200,notional:secret},b:{id:'INTC-USD.P',side:'LONG',entry:100,units:secret},beta:.7,z:2,expiresAt:1793058660000,tpZ:.3,stopZ:4,tpOperator:'≤',stopOperator:'≥',maxHoldMinutes:120,gross:secret,positions:secret}};
+A.equal(S.target('https://t.me/c/1234567890/2'),id);
+A.throws(()=>S.target('https://t.me/+invite'));A.throws(()=>S.target('12345'));
+A.throws(()=>S.checkChat({type:'supergroup',id}));A.throws(()=>S.checkChat({type:'private',id:42}));
+const text=S.message(a);A.ok(!text.includes(secret));A.ok(!text.includes('/open'));A.ok(!text.includes('/link'));A.ok(!text.includes('Register trade'));A.match(text,/SHARED RESEARCH/);A.match(text,/not a win probability/);A.ok(text.length<4000);
+const state=C.initial(),before=JSON.stringify(state);
+C.handle(state,{update_id:1,message:{chat:{type:'channel',id},from:{id:42},text:'/positions',date:Math.floor(Date.now()/1000)}},'42',()=>null);
+A.equal(Object.keys(state.positions).length,0);A.equal(state.outbox.length,0);A.equal(state.draft,null);
+A.equal(B.callbackMessage({data:'open:aabbccddeeff',from:{id:42},message:{chat:{type:'channel',id},from:{is_bot:true,username:'pairdeskbot'}}},'42',Date.now()),null);
+(async()=>{
+ const calls=[];const api=async(method,data)=>{calls.push({method,data});return method==='getChat'?{id,type:'channel'}:{chat:{id,type:'channel'}};};
+ A.equal(await S.send(a,{enabled:false,chatId:id},api),false);A.equal(calls.length,0);
+ A.equal(await S.send(a,{enabled:true,chatId:id},api),true);
+ A.deepEqual(Object.keys(calls[1].data).sort(),['chat_id','text']);A.equal(calls[1].data.chat_id,id);A.ok(!JSON.stringify(calls).includes(secret));
+ let sent=false;
+ await A.rejects(()=>S.send(a,{enabled:true,chatId:id},async(method)=>{if(method==='sendMessage')sent=true;return {id,type:'private'};}));A.equal(sent,false);
+ await A.rejects(()=>S.send(a,{enabled:true,chatId:id},async()=>{throw Error('offline');}));
+ console.log('Shared-channel checks passed: public-field allowlist, no private sizing/state/buttons, channel-only destination, disabled mode, failed delivery and private command isolation.');
+})().catch(e=>{console.error(e);process.exitCode=1;});

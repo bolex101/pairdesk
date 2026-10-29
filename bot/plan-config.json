@@ -1,0 +1,7 @@
+{
+  "gross": 1000,
+  "exitZ": 0.3,
+  "stopZ": 4,
+  "maxHoldMinutes": 120,
+  "entryValidMinutes": 5
+}

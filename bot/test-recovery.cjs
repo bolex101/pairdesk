@@ -1,0 +1,25 @@
+const A=require('node:assert/strict'),W=require('./wallet-sync.cjs'),C=require('./positions.cjs');
+const base=1793191800000,account='Phoenix:0:1';
+const rows=[{symbol:'AAA',side:'LONG',quantity:5,price:100,enteredAt:base-30000,generation:'a'},{symbol:'BBB',side:'SHORT',quantity:4,price:125,enteredAt:base-30000,generation:'b'}];
+const state=linked=>{const s=C.initial();if(linked)s.positions.p={id:'p',plan:{venue:'Phoenix',a:{id:'AAA',side:'LONG'},b:{id:'BBB',side:'SHORT'}},wallet:{account,legs:rows.map(r=>({...r}))},priceA:100,priceB:125,notionalA:500,notionalB:500};return s;};
+const cycle=(s,offset,ok)=>W.reconcile(s,[{account,venue:'Phoenix',at:base+offset,revision:String(offset+1),ok,rows:ok?structuredClone(rows):[]}],[],C.queue,base+offset);
+const messages=s=>s.outbox.map(e=>e.text);
+let s=state(false);
+for(let t=0;t<600000;t+=30000)cycle(s,t,t%60000===30000);
+A.ok(!messages(s).some(t=>/WALLET SYNC UNAVAILABLE|Wallet sync resumed/.test(t)));
+s=state(true);
+for(let t=0;t<600000;t+=30000)cycle(s,t,t%60000===30000);
+A.equal(messages(s).filter(t=>t.includes('WALLET SYNC UNAVAILABLE')).length,1);
+A.equal(messages(s).filter(t=>t.includes('Wallet sync resumed')).length,0);
+A.equal(s.positions.p.closedAt,undefined);
+cycle(s,600000,true);cycle(s,630000,true);
+A.equal(messages(s).filter(t=>t.includes('Wallet sync resumed')).length,1);
+cycle(s,660000,false);A.equal(s.positions.p.walletSuspended,true);A.equal(s.positions.p.closedAt,undefined);
+for(const t of [690000,720000,750000])cycle(s,t,true);
+A.equal(messages(s).filter(t=>t.includes('Wallet sync resumed')).length,1);
+A.equal(s.positions.p.walletSuspended,false);
+// Health state persists through a process restart.
+s=JSON.parse(JSON.stringify(s));cycle(s,780000,false);cycle(s,810000,true);cycle(s,870000,true);
+A.equal(messages(s).filter(t=>t.includes('Wallet sync resumed')).length,1);
+cycle(s,3700000,false);A.equal(messages(s).filter(t=>t.includes('WALLET SYNC UNAVAILABLE')).length,2);
+console.log('Recovery checks passed: unmonitored accounts quiet, flapping suppressed, sustained recovery, hourly warning bound, persisted health and failed checks never imply closure.');
