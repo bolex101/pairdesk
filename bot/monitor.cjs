@@ -59,7 +59,10 @@ async function flush(){
     save(); // Commit command and offset together before delivery.
     if(u.callback_query?.id){try{await bot.api('answerCallbackQuery',{callback_query_id:u.callback_query.id});}catch(e){console.error('Button acknowledgement unavailable; registration result is preserved ('+Log.safe(e)+')');}}
    }
-  }catch(e){console.error('Telegram polling unavailable; monitoring continues ('+Log.safe(e)+')');await new Promise(r=>setTimeout(r,3000));}
+  }catch(e){
+   // 409 = another getUpdates poller or a webhook uses this token; back off instead of hammering.
+   const hint=e.status===409?'; another process is polling this bot token or a webhook is set':'',wait=e.retryAfter?e.retryAfter*1000:e.status===409?15000:3000;
+   console.error(new Date().toISOString()+' Telegram polling unavailable; monitoring continues ('+Log.safe(e)+hint+')');await new Promise(r=>setTimeout(r,wait));}
   await flush();
  }
 })().catch(e=>{console.error('Position monitor stopped; check configuration/state or webhook. No credentials displayed. ('+Log.safe(e)+')');process.exitCode=1;});
