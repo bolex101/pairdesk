@@ -49,7 +49,7 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
    if(N.names.includes(venue))for(const m of await N.enrich(venue,universe.map(r=>fresh.get(r.id)).filter(Boolean)))fresh.set(m.id,m);
    const results=S.pairs(universe.map(r=>fresh.get(r.id)).filter(Boolean))
     .filter(p=>histories.has(p.a.id)&&histories.has(p.b.id))
-    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E));
+    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E,Date.now(),3,{exitZ:planSettings.exitZ,maxHoldMinutes:planSettings.maxHoldMinutes}));
    // Data outages and warm-up are not observed signal exits; preserve alert deduplication state.
    const observable=results.filter(p=>!p.reasons.some(r=>/Fewer than|older than|Quote older|Fresh two-sided|Incomplete or future|Too many gaps|Execution cost incomplete/.test(r)));
    const planned=observable.map(p=>({...p,plan:Plan.build(p,venue,Date.now(),planSettings)}));

@@ -1,4 +1,5 @@
 // Fixed-fit, log-spread reference plans. No orders or leverage assumptions.
+const Fd=require('./funding.js');
 const DEFAULTS=Object.freeze({gross:1000,exitZ:0.3,stopZ:4,maxHoldMinutes:120,entryValidMinutes:5});
 function settings(input={}){
  const c={...DEFAULTS,...input};
@@ -17,8 +18,12 @@ function build(p,venue,now=Date.now(),input={}){
  const z=(Math.log(midA)-p.alpha-p.beta*Math.log(midB))/p.sd;
  if(!Number.isFinite(z)||z*p.z<=0||Math.abs(z)<1.5||Math.abs(z)>3)return reject('Live midpoint relationship has moved outside the entry range');
  const magnitude=Math.abs(z),direction=Math.sign(z),cost=c.gross*p.cost/10000;
+ // Expected funding over the half-life-based hold (bps of gross); unknown funding is flagged, not assumed zero in the text.
+ const f=p.funding&&typeof p.funding==='object'?p.funding:{known:false,missing:[p.a.id,p.b.id]};
+ const fundingBps=f.known&&Number.isFinite(f.bps)?f.bps:0,fundingCost=c.gross*fundingBps/10000;
+ const effectiveCost=Number.isFinite(p.totalCost)?p.totalCost:p.cost;
  const targetGross=c.gross*(magnitude-c.exitZ)*p.sd/(1+p.beta);
- if(magnitude*p.sd/(1+p.beta)*10000<2*p.cost||targetGross<=cost)return reject('Current move no longer covers the cost filter and take-profit costs');
+ if(magnitude*p.sd/(1+p.beta)*10000<2*effectiveCost||targetGross<=cost+Math.max(fundingCost,0))return reject('Current move no longer covers the cost filter and take-profit costs');
  const aNotional=c.gross/(1+p.beta),bNotional=c.gross-aNotional;
  const entryA=direction>0?p.a.bid:p.a.ask,entryB=direction>0?p.b.ask:p.b.bid;
  const ratio=level=>Math.exp(p.alpha+level*p.sd);
@@ -28,7 +33,8 @@ function build(p,venue,now=Date.now(),input={}){
   a:{id:p.a.id,side:direction>0?'SHORT':'LONG',notional:aNotional,entry:entryA,units:aNotional/entryA,quoteTime:p.a.quoteTime},
   b:{id:p.b.id,side:direction>0?'LONG':'SHORT',notional:bNotional,entry:entryB,units:bNotional/entryB,quoteTime:p.b.quoteTime},
   tpZ:direction*c.exitZ,stopZ:direction*c.stopZ,tpOperator:direction>0?'≤':'≥',stopOperator:direction>0?'≥':'≤',ratios,
-  cost,targetNet:targetGross-cost,stopLoss:c.gross*(c.stopZ-magnitude)*p.sd/(1+p.beta)+cost};
+  cost,funding:{...f,usd:f.known&&Number.isFinite(f.bps)?fundingCost:null},
+  targetNet:targetGross-cost-fundingCost,stopLoss:c.gross*(c.stopZ-magnitude)*p.sd/(1+p.beta)+cost+fundingCost};
 }
 const price=n=>Number(n.toPrecision(8)).toString();
 function lines(p){
@@ -46,9 +52,10 @@ function lines(p){
   `R now ${p.ratios.entry.toPrecision(12)} | TP ${p.tpOperator} ${p.ratios.tp.toPrecision(12)} | stop ${p.stopOperator} ${p.ratios.stop.toPrecision(12)}`,
   `Entry R range ${p.ratios.entryLow.toPrecision(12)}–${p.ratios.entryHigh.toPrecision(12)}`,
   `Approx. net at TP +${p.targetNet.toFixed(2)} ${currency}; at stop -${p.stopLoss.toFixed(2)} ${currency}; estimated round-trip friction ${p.cost.toFixed(2)} ${currency}`,
+  'Expected funding: '+(p.funding?.known&&Number.isFinite(p.funding.usd)?(p.funding.usd>=0?'pay ':'receive ')+Math.abs(p.funding.usd).toFixed(2)+' '+currency+' — '+Fd.describe(p.funding):Fd.describe(p.funding))+(p.funding?.known?'; included in the TP/stop estimates above':'; NOT included'),
   `Time exit: close both legs after ${p.maxHoldMinutes} minutes from actual entry if neither exit occurs.`,
   'Keep this alert’s beta and ratio thresholds fixed; later alerts may use a different fit.',
-  'Quantities are estimates, not contract counts: verify lot sizes, multipliers and minimums. Funding/impact excluded; losses may exceed estimates.',
+  'Quantities are estimates, not contract counts: verify lot sizes, multipliers and minimums. Funding is estimated from current rates and can change; market impact excluded; losses may exceed estimates.',
   'No orders/stops placed. Monitoring begins after verified wallet matching (Arcus/Popdex) or Telegram registration. Check /positions.'];
 }
 module.exports={DEFAULTS,settings,build,lines};

@@ -1,4 +1,4 @@
-const Plan=require('./trade-plan.cjs');
+const Plan=require('./trade-plan.cjs'),Fd=require('./funding.js');
 const MIN_ALERT_SCORE=65;
 // Pure alert policy shared by Mac/server runners. No network or secrets.
 const keyFor=(venue,pair)=>venue+':'+[pair.a.id,pair.b.id].sort().join('/');
@@ -30,13 +30,14 @@ function message(a){
   '• Estimated half-life: '+number(p.half)+' min',
   '• Full-reversion move: '+number(p.edge)+' bps',
   '• Round-trip friction: '+number(p.cost)+' bps',
+  '• Expected funding: '+Fd.describe(p.funding),
   '• Price history: '+(p.a.historySource||'Exchange candles'),
   '• Bar / observation bucket opened: '+new Date(p.rows.at(-1).t).toISOString(),
   '',
   plan[0],
   ...plan.slice(1).map(line=>'• '+line),
   '',
-  '• Passes configured research filters. Funding and market impact excluded. Review before trading.'
+  '• Passes configured research filters. Funding estimate included in the cost check where known; market impact excluded. Review before trading.'
  ].join('\n');
 }
 module.exports={MIN_ALERT_SCORE,keyFor,selectAlerts,message};

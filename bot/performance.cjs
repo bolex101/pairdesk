@@ -1,6 +1,8 @@
 const fs=require('node:fs'),path=require('node:path'),Store=require('./storage.cjs'),Core=require('./positions.cjs');
 const VERSION='paper-v1-confirm1',MAX_GAP=120000;
-function metadata(pair){return {version:VERSION,score:pair.score,signalZ:pair.z,confirmZ:pair.confirm,minConfirmZ:1,slippageBpsPerSide:3,feeBps:[pair.a.takerBps,pair.b.takerBps],funding:'unavailable',feeBasis:'Public quoted taker rate at signal time; frozen for exit',execution:'Indicative bid/ask; fixed entry units; slippage deducted as cash cost'};}
+// Funding rates at signal time, frozen for the paper trade. Unknown stays explicitly unknown.
+function fundingMeta(f){if(!f||!f.known||!Number.isFinite(f.hourlyBps?.a)||!Number.isFinite(f.hourlyBps?.b))return {known:false,missing:f?.missing||[]};return {known:true,hourlyBps:[f.hourlyBps.a,f.hourlyBps.b],expectedBps:Number.isFinite(f.bps)?f.bps:null,holdMinutes:f.holdMinutes,basis:'Current rate at signal time; positive = leg pays'};}
+function metadata(pair){return {version:VERSION,score:pair.score,signalZ:pair.z,confirmZ:pair.confirm,minConfirmZ:1,slippageBpsPerSide:3,feeBps:[pair.a.takerBps,pair.b.takerBps],funding:fundingMeta(pair.funding),feeBasis:'Public quoted taker rate at signal time; frozen for exit',execution:'Indicative bid/ask; fixed entry units; slippage deducted as cash cost'};}
 function valid(p){const m=p?.research;return p?.ready&&m?.version===VERSION&&Number.isFinite(m.score)&&m.score>=0&&m.score<=100&&Array.isArray(m.feeBps)&&m.feeBps.length===2&&m.feeBps.every(n=>Number.isFinite(n)&&n>=0)&&Number.isFinite(m.slippageBpsPerSide)&&m.slippageBpsPerSide>=0&&[p.createdAt,p.expiresAt,p.maxHoldMinutes,p.beta,p.alpha,p.sd,p.tpZ,p.stopZ].every(Number.isFinite)&&p.maxHoldMinutes>0&&p.sd>0&&p.beta>0&&[p.a,p.b].every(l=>l&&['LONG','SHORT'].includes(l.side)&&[l.entry,l.units,l.notional,l.quoteTime].every(Number.isFinite)&&l.entry>0&&l.units>0&&l.notional>0);}
 // Scanner writes a separate immutable receipt only after Telegram confirms delivery.
 function receipt(dir,id,plan){
@@ -43,7 +45,10 @@ function observe(s,r,quotes,now=Date.now()){
   slippage+=turnover*r.plan.research.slippageBpsPerSide/10000;
  }
  const net=value.pnl-fees-slippage,gross=r.notionalA+r.notionalB;
- Object.assign(r,{status:'closed',exitReason:reason,exitedAt:now,exitQuotes:quotes,quotedPnl:value.pnl,estimatedFees:fees,slippageAllowance:slippage,estimatedNetBeforeFunding:net,returnBps:net/gross*10000,outcome:Math.abs(net)<1e-8?'flat':net>0?'win':'loss'});
+ // Funding accrued at the frozen signal-time hourly rates over the actual paper holding time.
+ const fm=r.plan.research.funding,hours=Math.max(0,now-r.enteredAt)/3600000;
+ const funding=fm&&fm.known===true&&Array.isArray(fm.hourlyBps)&&fm.hourlyBps.every(Number.isFinite)?(r.notionalA*fm.hourlyBps[0]+r.notionalB*fm.hourlyBps[1])/10000*hours:null;
+ Object.assign(r,{status:'closed',exitReason:reason,exitedAt:now,exitQuotes:quotes,quotedPnl:value.pnl,estimatedFees:fees,slippageAllowance:slippage,estimatedNetBeforeFunding:net,returnBps:net/gross*10000,estimatedFunding:funding,estimatedNetAfterFunding:funding===null?null:net-funding,returnAfterFundingBps:funding===null?null:(net-funding)/gross*10000,outcome:Math.abs(net)<1e-8?'flat':net>0?'win':'loss'});
 }
 function report(s,venue){
  const st=state(s),all=Object.values(st.records),rows=all.filter(r=>!venue||r.venue===venue),closed=rows.filter(r=>r.status==='closed');
@@ -55,8 +60,10 @@ function report(s,venue){
  }
  const losses=closed.filter(r=>r.outcome==='loss').length,flats=closed.filter(r=>r.outcome==='flat').length;
  lines.push('','Closed: '+closed.length+'; wins '+closed.filter(r=>r.outcome==='win').length+', losses '+losses+', flat '+flats+'. Wins / all closed (flats included).','Exits: TP '+closed.filter(r=>r.exitReason==='TP').length+', stop '+closed.filter(r=>r.exitReason==='STOP').length+', time '+closed.filter(r=>r.exitReason==='TIME').length+'. TP is not automatically a net win.','Excluded: '+rows.filter(r=>r.status==='excluded').length+' (late/missing/invalid data); excluded results are not counted as wins or losses.');
+ const withFunding=closed.filter(r=>Number.isFinite(r.returnAfterFundingBps));
+ lines.push('Funding estimate (signal-time rates): '+withFunding.length+' closed with known funding'+(withFunding.length?', avg after funding '+(withFunding.reduce((n,r)=>n+r.returnAfterFundingBps,0)/withFunding.length).toFixed(2)+' bps':'')+'; '+(closed.length-withFunding.length)+' with unknown funding.');
  if(!venue)lines.push('By exchange: /performance Popdex, /performance Arcus, /performance Variational, /performance Ondo, /performance Phoenix, /performance QFEX, /performance RISEx');
  lines.push('All delivered signals are independent paper trades, including overlaps. Small samples, correlated signals and data exclusions can distort results. Quotes are sampled, not executable fills. Older signals are not backfilled.');
  return lines.join('\n');
 }
-module.exports={metadata,valid,receipt,ingest,open,observe,report,VERSION};
+module.exports={fundingMeta,metadata,valid,receipt,ingest,open,observe,report,VERSION};

@@ -1,5 +1,5 @@
 'use strict';
-const D=require('./data.cjs');
+const D=require('./data.cjs'),Fd=require('./funding.js');
 const names=['QFEX','RISEx'],Q='https://api.qfex.com',R='https://api.rise.trade',BAR=300000;
 const n=v=>v===null||v===undefined||v===''?NaN:Number(v);
 function parts(now,tz){return Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));}
@@ -21,7 +21,7 @@ function listQfex(contracts,ref,now=Date.now()){
  return contracts.data.filter(c=>c.product_type==='Perpetual'&&c.target_currency==='USD').flatMap(c=>{
  const m=by.get(c.ticker_id);if(!m||m.quote_asset!=='USD'||m.base_asset!==c.base_currency)return [];
  const fee={EQUITY:10,INDEX:5,COMMODITY:5}[m.product_category];if(fee===undefined)return [];
- return [baseRow(m.symbol,m.base_asset,c.last_price,c.target_volume,fee,m.status==='ACTIVE'?'Trading':'Unavailable',!qSession(m.market_hours,now),'QFEX exchange candles')];
+ return [{...baseRow(m.symbol,m.base_asset,c.last_price,c.target_volume,fee,m.status==='ACTIVE'?'Trading':'Unavailable',!qSession(m.market_hours,now),'QFEX exchange candles'),funding:n(c.funding_rate),fundingHourly:Fd.perp(c.funding_rate,n(c.funding_interval_minutes)*60,'QFEX funding_rate per funding_interval_minutes')}];
  });
 }
 function listRise(data,now=Date.now()){
@@ -33,7 +33,7 @@ function listRise(data,now=Date.now()){
  // Canonical display ID avoids a slash being mistaken for a pair separator.
  const symbol=m.config.name.split('/')[0],row=baseRow(symbol+'-USDC',symbol,m.mark_price,m.quote_volume_24h,3,
  m.active===true&&m.reduce_only===false&&m.post_only===false&&m.config.unlocked===true?'Trading':'Unavailable',!riseSession(now),'RISEx exchange OHLCV');
- return {...row,marketId:m.market_id};
+ return {...row,marketId:m.market_id,funding:n(m.funding_rate_8h),fundingHourly:Fd.perp(m.funding_rate_8h,8*3600,'RISEx 8h funding rate')};
  });
 }
 let riseCache,cacheAt=0,risePending;

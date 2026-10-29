@@ -1,4 +1,4 @@
-const D=require('./data.cjs'),X=require('./extra-venues.cjs');
+const D=require('./data.cjs'),X=require('./extra-venues.cjs'),Fd=require('./funding.js');
 const ONDO='https://api.ondoperps.xyz',PHOENIX='https://perp-api.phoenix.trade';
 const names=['Ondo','Phoenix',...X.names];
 const number=v=>v===null||v===undefined||v===''?NaN:Number(v);
@@ -8,6 +8,7 @@ function listOndo(data){
   id:r.market,symbol:r.baseCurrency,tradfi:Array.isArray(r.tags)&&r.tags.some(t=>['Stock','Commodity','ETF'].includes(t)),type:'linear-perpetual',
   status:!r.disabled&&!r.reduceOnly?'Trading':'Unavailable',offHours:r.isClosed!==false,
   price:(number(r.bid)+number(r.ask))/2,volume:number(r.usdVolume),takerBps:number(r.takerFee)*10000,
+  funding:number(r.fundingRate),fundingHourly:Fd.perp(r.fundingRate,Fd.interval('Ondo'),'Ondo reported rate (configured interval)'),
   bid:null,ask:null,spread:null,quoteTime:null,requireQuote:true,historySource:'Locally sampled Ondo order-book midpoints; not exchange candles'
  }));
 }
@@ -18,6 +19,7 @@ function listPhoenix(config,stats){
   id:m.symbol,symbol:m.symbol,tradfi:m.commodityMetadata?.isCommodity===true,type:'linear-perpetual',
   status:m.marketStatus==='active'?'Trading':'Unavailable',offHours:m.commodityMetadata?.isAfterHours!==false,
   price:number(r.mark_price),volume:number(r.day_volume_usd),takerBps:number(m.takerFee)*10000,
+  funding:number(r.eight_hour_funding_rate),fundingHourly:Fd.perp(r.eight_hour_funding_rate,8*3600,'Phoenix 8h funding rate'),
   bid:null,ask:null,spread:null,quoteTime:null,requireQuote:true,statsTime:number(r.timestamp_ms),historySource:'Phoenix exchange candles (external backfills excluded)'
  };});
 }
