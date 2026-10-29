@@ -54,3 +54,15 @@ need about 20 hours of `both` running before they can produce setups. The other
 venues work straight away.
 
 To reset the test run, stop it and delete the test state directory.
+
+## Long-running test experiments
+
+`scripts/test-watchdog.sh` keeps `scripts/test-run.sh both` alive (single instance via
+`flock` on `/tmp/pairdesk-test-run.lock`; restarts 30 s after any exit). Start it detached:
+
+    setsid nohup scripts/test-watchdog.sh both >> /workspace/pairdesk-test-run.log 2>&1 < /dev/null &
+
+Stop it with `kill -TERM -- -<watchdog pid>` (whole process group). Every delivered alert is
+appended to `<state dir>/alerts-log.jsonl` (override with `PAIRDESK_ALERT_LOG`): time, signal ID,
+venue, pair, side, score, z, beta, both legs' side/entry/notional, TP/stop z and ratios, time-exit
+time, cost, funding, target net and stop loss.
