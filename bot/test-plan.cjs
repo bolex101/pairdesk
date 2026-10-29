@@ -35,7 +35,7 @@ assert.equal(P.build({...p,cost:100},'Popdex',now).ready,false);
 for(const config of [{gross:0},{gross:NaN},{exitZ:2},{stopZ:3},{maxHoldMinutes:0}])assert.throws(()=>P.settings(config));
 assert.equal(P.lines(P.build(p,'Variational',now)).join('\n').includes('USD-equivalent'),true);
 // Real analysis preserves exactly the fitted parameters needed to freeze the plan.
-const rows=E.demo(4).slice(-240),fit=E.stats(rows,60),result=S.analyze({a:p.a,b:p.b},rows,E,rows.at(-1).t+300000);
+const rows=E.demo(4).slice(-240),fit=E.stats(rows,S.MODEL_DEFAULTS.fitWindow),result=S.analyze({a:p.a,b:p.b},rows,E,rows.at(-1).t+300000);
 near(result.alpha,fit.alpha);near(result.sd,fit.sd);near(result.beta,fit.beta);
 // Frozen plan remains unchanged if a later rolling fit changes.
 const frozen=P.build(p,'Popdex',now),oldTarget=frozen.ratios.tp;p.alpha+=.001;near(frozen.ratios.tp,oldTarget);

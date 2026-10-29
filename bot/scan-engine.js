@@ -8,8 +8,11 @@ const MIN_CONFIRM_Z=1.0;
 const finite=x=>Number.isFinite(x);const clamp=x=>Math.max(0,Math.min(1,x));
 // Funding income may offset at most this share of friction, so projected income alone never justifies a trade.
 const FUNDING_DEFAULTS={exitZ:0.3,maxHoldMinutes:120,fundingIncomeCreditMax:0.5,requireKnownFunding:false};
+/* One fit window for z, beta, sd, half-life and the cointegration test. The fit uses the
+   fitWindow bars BEFORE the current bar (no lookahead); z is the current bar vs that fit. */
+const MODEL_DEFAULTS={fitWindow:120,adfLags:1,adfLevel:0.10,minHalfLife:5,maxHalfLife:120};
 function analyze(pair,rows,E,now=Date.now(),slip=3,options={}){
- const o={...FUNDING_DEFAULTS,...options};
+ const o={...FUNDING_DEFAULTS,...MODEL_DEFAULTS,...options};
  const {a,b}=pair,result={...pair,rows,eligible:false,score:null,reasons:[],z:null,corr:null,half:null,cost:null,funding:null,totalCost:null,edge:null};
  if(rows.length<240){result.reasons.push('Fewer than 240 matched bars');return result;}
  const tail=rows.slice(-240),last=tail.at(-1),gaps=tail.slice(1).filter((r,i)=>r.t-tail[i].t!==300000).length;
@@ -21,14 +24,17 @@ function analyze(pair,rows,E,now=Date.now(),slip=3,options={}){
  if([a,b].some(r=>!['ONLINE','Trading','Listed'].includes(r.status)))result.reasons.push('Market not open for normal trading');
  if([a,b].some(r=>r.quoteTime&&now-r.quoteTime>120000))result.reasons.push('Quote older than two minutes');
  if([a,b].some(r=>r.requireQuote&&(!Number.isFinite(r.quoteTime)||r.quoteTime<=0||now-r.quoteTime>120000||r.quoteTime>now+5000||!(r.bid>0)||!(r.ask>=r.bid))))result.reasons.push('Fresh two-sided quote unavailable');
- const s=E.stats(tail,60),f=E.fit(tail.slice(0,-1));if(!s||!f){result.reasons.push('No stable positive hedge fit');return result;}
- result.z=s.z;result.corr=E.corr(tail);result.beta=s.beta;result.alpha=s.alpha;result.sd=s.sd;result.confirm=s.confirm;
+ const w=Math.min(o.fitWindow,tail.length-1),s=E.stats(tail,w);if(!s){result.reasons.push('No stable positive hedge fit');return result;}
+ result.z=s.z;result.corr=E.corr(tail);result.beta=s.beta;result.alpha=s.alpha;result.sd=s.sd;result.confirm=s.confirm;result.fitWindow=w;
  const c1=E.corr(tail.slice(0,120)),c2=E.corr(tail.slice(120));
  if(result.corr<.5||c1<.3||c2<.3)result.reasons.push('Weak or unstable return correlation');
- const residual=tail.map(r=>Math.log(r.a)-f.alpha-f.beta*Math.log(r.b));let numerator=0,denominator=0;
+ // Half-life and ADF use the residuals of the SAME fit, over the same window (current bar excluded).
+ const residual=tail.slice(-w-1,-1).map(r=>Math.log(r.a)-s.alpha-s.beta*Math.log(r.b));let numerator=0,denominator=0;
  for(let i=1;i<residual.length;i++){numerator+=residual[i-1]*(residual[i]-residual[i-1]);denominator+=residual[i-1]**2;}
  const phi=1+numerator/denominator;result.half=phi>0&&phi<1?-Math.log(2)/Math.log(phi)*5:null;
- if(!result.half||result.half<5||result.half>120)result.reasons.push('Mean-reversion estimate outside 5–120 minutes');
+ if(!result.half||result.half<o.minHalfLife||result.half>o.maxHalfLife)result.reasons.push('Mean-reversion estimate outside '+o.minHalfLife+'–'+o.maxHalfLife+' minutes');
+ result.adf=typeof E.adf==='function'?E.adf(residual,o.adfLags):null;
+ if(o.adfLevel&&typeof E.adf==='function'&&!E.adfPass(result.adf,o.adfLevel))result.reasons.push('No cointegration evidence (ADF p '+(result.adf?.p||'n/a')+')');
  const wa=1/(1+s.beta),wb=1-wa;
  if(finite(a.takerBps)&&finite(b.takerBps)&&finite(a.spread)&&finite(b.spread))result.cost=2*(wa*a.takerBps+wb*b.takerBps)+wa*a.spread+wb*b.spread+2*slip;
  result.edge=Math.abs(s.z)*s.sd/(1+s.beta)*10000;
@@ -48,5 +54,5 @@ function analyze(pair,rows,E,now=Date.now(),slip=3,options={}){
  result.setup=result.eligible&&Math.abs(s.z)>=1.5&&Math.abs(s.z)<=3&&Number.isFinite(s.confirm)&&Math.abs(s.confirm)>=MIN_CONFIRM_Z&&s.z*s.confirm>0;
  return result;
 }
-root.PairScan={MIN_CONFIRM_Z,FUNDING_DEFAULTS,groups,universe,pairs,analyze};if(typeof module!=='undefined')module.exports=root.PairScan;
+root.PairScan={MIN_CONFIRM_Z,FUNDING_DEFAULTS,MODEL_DEFAULTS,groups,universe,pairs,analyze};if(typeof module!=='undefined')module.exports=root.PairScan;
 })(typeof globalThis!=='undefined'?globalThis:this);
