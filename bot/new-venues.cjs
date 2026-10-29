@@ -1,4 +1,4 @@
-const D=require('./data.cjs'),X=require('./extra-venues.cjs'),Fd=require('./funding.js');
+const D=require('./data.cjs'),X=require('./extra-venues.cjs'),Fd=require('./funding.js'),Sol=require('./solana.cjs');
 const ONDO='https://api.ondoperps.xyz',PHOENIX='https://perp-api.phoenix.trade';
 const names=['Ondo','Phoenix',...X.names];
 const number=v=>v===null||v===undefined||v===''?NaN:Number(v);
@@ -41,9 +41,7 @@ function book(venue,id,data,quoteTime){
 // Use the book's actual Solana block time; never relabel an old snapshot as fresh.
 async function blockTime(slot){
  if(!Number.isSafeInteger(slot)||slot<0)throw Error('Invalid Phoenix book slot');
- const r=await fetch('https://api.mainnet-beta.solana.com',{method:'POST',redirect:'error',signal:AbortSignal.timeout(8000),headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'getBlockTime',params:[slot]})});
- if(!r.ok)throw Error('Phoenix timestamp RPC unavailable');const data=await r.json();
- if(data.error||!Number.isFinite(data.result)||data.result<=0)throw Error('Phoenix block time unverified');return data.result*1000;
+ try{return await Sol.blockTime(slot);}catch(e){throw Error('Phoenix block time unverified: '+e.message);}
 }
 async function quote(venue,id){
  if(X.names.includes(venue))return X.quote(venue,id);

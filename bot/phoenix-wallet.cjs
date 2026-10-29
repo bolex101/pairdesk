@@ -1,4 +1,4 @@
-const D=require('./data.cjs'),Risk=require('./risk.cjs');
+const D=require('./data.cjs'),Risk=require('./risk.cjs'),Sol=require('./solana.cjs');
 const BASE='https://perp-api.phoenix.trade';
 const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim())?Number(v):NaN;
 const near=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=Math.max(1e-9,Math.abs(b)*1e-8);
@@ -45,10 +45,7 @@ function withHistory(accounts,data,now=Date.now()){
  return accounts;
 }
 async function blockTime(slot){
- const r=await fetch('https://api.mainnet-beta.solana.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'getBlockTime',params:[slot]}),signal:AbortSignal.timeout(8000)});
- if(!r.ok)throw Error('Phoenix snapshot time unavailable');
- const d=await r.json();if(d.error||!Number.isSafeInteger(d.result)||d.result<=0)throw Error('Phoenix snapshot time unavailable');
- return d.result*1000;
+ try{return await Sol.blockTime(slot);}catch(e){throw Error('Phoenix snapshot time unavailable',{cause:e});}
 }
 async function fetchAccounts(config){
  const {address,index=0,subaccounts=[0]}=config;

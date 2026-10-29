@@ -1,4 +1,4 @@
-const F=require('./feeds.js');
+const F=require('./feeds.js'),Http=require('./http.cjs');
 const VAR_URL='https://omni-client-api.prod.ap-northeast-1.variational.io/metadata/v2/stats';
 const BAR=300000;
 function arcusQuote(market,data){
@@ -19,5 +19,6 @@ function record(previous,markets,now){
  return next;
 }
 function sampledHistory(store,id,now){return (store.markets?.[id]||[]).filter(r=>Number.isSafeInteger(r.t)&&r.t%BAR===0&&Number.isFinite(r.c)&&r.c>0&&r.t+BAR<=now-2000&&r.observedAt>=r.t+BAR-90000&&r.observedAt<r.t+BAR).sort((a,b)=>a.t-b.t).map(r=>({t:r.t,c:r.c,volume:null}));}
-async function get(url){const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 Pairdesk'},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw Error('Market HTTP '+r.status);return r.json();}
+// Transient failures (timeouts, 429, 5xx) are retried with jittered backoff; see http.cjs.
+async function get(url,options){return Http.withRetry(async()=>{const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 Pairdesk'},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Http.HttpError('Market HTTP '+r.status,r.status,r.headers?.get?.('retry-after'));return r.json();},options);}
 module.exports={VAR_URL,arcusQuote,variationalMarkets,record,sampledHistory,get};
