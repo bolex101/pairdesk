@@ -1,3 +1,4 @@
+const Identity=require('./identity.cjs');
 const Log=require('./log.cjs');
 const fs=require('node:fs'),path=require('node:path'),C=require('./positions.cjs'),Store=require('./storage.cjs'),W=require('./wallet-sync.cjs'),L=require('./wallet-link.cjs'),Feeds=require('./monitor-feeds.cjs'),WF=require('./wallet-feeds.cjs'),PF=require('./phoenix-wallet.cjs'),OF=require('./ondo-wallet.cjs');
 const ID=/^[1-9]\d{0,15}$/,venues=['Popdex','Arcus','Phoenix','Ondo','RISEx'];
@@ -14,7 +15,7 @@ function admin(s,text,reply,now=Date.now()){
  const args=text.split(/\s+/),action=args[0];
  if(!['/friends','/approve','/revoke'].includes(action))return false;
  const all=members(s);
- if(action==='/friends'){reply(Object.entries(all).map(([id,m])=>id+' — '+m.status+' — '+m.name).join('\n')||'No friend requests yet. Friends can send /start to @pairdeskbot.');return true;}
+ if(action==='/friends'){reply(Object.entries(all).map(([id,m])=>id+' — '+m.status+' — '+m.name).join('\n')||'No friend requests yet. Friends can send /start to @'+Identity.username()+'.');return true;}
  const id=args[1],m=all[id];
  if(args.length!==2||!ID.test(id||'')||!m){reply('Use '+action+' TELEGRAM_USER_ID from /friends.');return true;}
  if(action==='/approve'){

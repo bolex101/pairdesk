@@ -8,7 +8,7 @@ if(s.version!==1||!s.positions||!Array.isArray(s.outbox)||!Number.isSafeInteger(
 const configFile=process.env.PAIRDESK_WALLET_CONFIG||path.join(__dirname,'wallet-config.json');
 const walletConfig=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{enabled:false};
 const save=()=>Store.save(file,s);
-const Friends=require('./friends.cjs'),Heartbeat=require('./heartbeat.cjs');
+const Friends=require('./friends.cjs'),Identity=require('./identity.cjs'),Heartbeat=require('./heartbeat.cjs');
 // Dead-man check on the scanner: alert via the normal outbox if status.json goes stale.
 function watchScanner(now){
  const last=Heartbeat.scannerLastRun(dir),limit=Config.get().heartbeatStaleMinutes;
@@ -25,7 +25,7 @@ async function flush(){
 }
 (async()=>{
  const me=await bot.api('getMe'),hook=await bot.api('getWebhookInfo');
- if(me.username?.toLowerCase()!=='pairdeskbot'||hook.url)throw Error('Unexpected bot or existing webhook');
+ if(me.username?.toLowerCase()!==Identity.username()||hook.url)throw Error('Unexpected bot or existing webhook');
  save();console.log('Position monitor ready; owner monitoring and approved private friend profiles enabled.');
  let nextCheck=0;
  for(;;){

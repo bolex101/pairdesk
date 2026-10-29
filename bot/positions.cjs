@@ -1,3 +1,4 @@
+const Identity=require('./identity.cjs');
 const Buttons=require('./buttons.cjs'),Risk=require('./risk.cjs');
 const HELP=['Pairdesk position monitoring','/open SIGNAL_ID — register actual fills from a NEW setup alert','/positions — open trades and last observations','/status — monitor health','/wallets — wallet sync health','/link SIGNAL_ID — review and link existing wallet fills','/performance — simulated results by score, before funding','/close POSITION_ID — mark both legs closed AFTER closing them on the exchange','/cancel — cancel registration','/test — labelled TP, stop and time-limit tests','/testbutton — try Register trade without creating a position','Notifications only. No orders placed. Periodic quotes can miss brief crossings.'].join('\n');
 function initial(){return {version:1,offset:0,positions:{},draft:null,outbox:[]};}
@@ -14,7 +15,7 @@ function handle(s,u,chatId,loadPlan,now=Date.now(),extraCommand){
  if(!m||m.chat?.type!=='private'||String(m.chat.id)!==String(chatId)||String(m.from?.id)!==String(chatId)||m.from?.is_bot||typeof m.text!=='string')return;
  const reply=(t,markup)=>queue(s,'command-'+u.update_id,t,markup);
  if(!Number.isFinite(m.date)||now-m.date*1000>600000||m.date*1000>now+60000){reply('That command is too old to apply. Send it again.');return;}
- const text=m.text.trim().replace(/^\/(\w+)@pairdeskbot\b/i,'/$1');
+ const text=m.text.trim().replace(new RegExp('^/(\\w+)@'+Identity.username()+'\\b','i'),'/$1');
  if(s.draft&&now-s.draft.startedAt>1800000)s.draft=null;
  if(extraCommand&&extraCommand(text,reply))return;
  if(text==='/help'||text==='/start'){reply(HELP);return;}
