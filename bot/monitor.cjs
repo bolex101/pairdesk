@@ -7,7 +7,13 @@ if(s.version!==1||!s.positions||!Array.isArray(s.outbox)||!Number.isSafeInteger(
 const configFile=process.env.PAIRDESK_WALLET_CONFIG||path.join(__dirname,'wallet-config.json');
 const walletConfig=fs.existsSync(configFile)?JSON.parse(fs.readFileSync(configFile,'utf8')):{enabled:false};
 const save=()=>Store.save(file,s);
-const Friends=require('./friends.cjs');
+const Friends=require('./friends.cjs'),Heartbeat=require('./heartbeat.cjs');
+// Dead-man check on the scanner: alert via the normal outbox if status.json goes stale.
+function watchScanner(now){
+ const last=Heartbeat.scannerLastRun(dir),limit=Config.get().heartbeatStaleMinutes;
+ s.heartbeat??={};const r=Heartbeat.evaluate(s.heartbeat.scanner,last,now,limit);s.heartbeat.scanner=r.entry;
+ if(r.event)Core.queue(s,'heartbeat:scanner:'+r.event+':'+now,Heartbeat.message('scanner',r,last,limit));
+}
 const pumpFriends=Friends.runner(s,save,bot,dir);
 async function flush(){
  for(const event of s.outbox.slice(0,10)){
@@ -40,7 +46,7 @@ async function flush(){
    const lookup=await Feeds.quotes([...open.filter(p=>!p.walletSuspended),...paper]);
    for(const r of paper)Performance.observe(s,r,lookup(r),Date.now());
    for(const p of open)Core.evaluate(s,p,lookup(p),Date.now());
-   s.lastCycle=Date.now();save();await flush();
+   s.lastCycle=Date.now();watchScanner(s.lastCycle);save();await flush();
    nextCheck=Date.now()+30000;
    console.log('Monitor cycle complete: '+open.length+' registered open trades');
   }

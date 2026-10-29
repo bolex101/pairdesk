@@ -22,7 +22,17 @@ async function telegram(text,replyMarkup){
  try{const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text,reply_markup:replyMarkup})});if(!r.ok||!(await r.json()).ok)throw Error();}
  catch{throw Error('Telegram delivery failed or could not be confirmed');}
 }
-const Shared=require('./shared-channel.cjs');
+const Shared=require('./shared-channel.cjs'),Heartbeat=require('./heartbeat.cjs');
+// Dead-man check on the monitor (delivery runs only with --send). State kept in heartbeat.json.
+async function watchMonitor(){
+ const file=path.join(dir,'heartbeat.json'),limit=Config.get().heartbeatStaleMinutes,last=Heartbeat.monitorLastCycle(dir),now=Date.now();
+ let hb={};try{hb=JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){if(e.code!=='ENOENT')console.error('Heartbeat state unreadable; starting fresh');}
+ const r=Heartbeat.evaluate(hb.monitor,last,now,limit);
+ if(!r.event)return;
+ if(!send){console.log('Heartbeat (dry run): monitor '+r.event);return;}
+ hb.monitor=r.entry;Store.save(file,hb);
+ try{await telegram(Heartbeat.message('monitor',r,last,limit));}catch(e){console.error('Heartbeat alert delivery unconfirmed: '+e.message);}
+}
 const pause=()=>new Promise(r=>setTimeout(r,350));
 (async()=>{
  let failures=0;const reports=[];
@@ -78,6 +88,7 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
    }
   }catch{failures++;console.error(venue+': scan failed; previous alert history preserved');}
  }
+ try{await watchMonitor();}catch(e){console.error('Heartbeat check failed: '+e.message);}
  const status={version:7,finishedAt:new Date().toISOString(),failures,deliveryEnabled:send,reports};
  fs.writeFileSync(path.join(dir,'status.json'),JSON.stringify(status,null,2),{mode:0o600});
  if(failures)process.exitCode=1;
