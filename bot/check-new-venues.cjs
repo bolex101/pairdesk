@@ -9,4 +9,4 @@ const N=require('./new-venues.cjs'),S=require('./scan-engine.js');
   if(venue==='Phoenix')console.log('Phoenix: '+(await N.history(venue,id)).length+' closed, non-backfilled 5m candles');
   else console.log('Ondo: sampled history required; collector must build at least 240 usable 5m samples.');
  }catch(e){console.error(venue+': '+e.message);process.exitCode=1;}}
-})().catch(()=>{console.error('Exchange check failed');process.exitCode=1;});
+})().catch(e=>{console.error('Exchange check failed ('+require('./log.cjs').safe(e)+')');process.exitCode=1;});

@@ -10,5 +10,5 @@ async function collect(){
  Store.save(file,D.record(old,usable,now));
  console.log('Ondo: recorded '+usable.length+'/'+rows.length+' supported markets at '+new Date(now).toISOString()+'; sampled midpoint history; missing samples are not filled.');
 }
-if(require.main===module)collect().catch(()=>{console.error('Ondo collection failed; existing history preserved. Check public API connectivity and collector permissions.');process.exitCode=1;});
+if(require.main===module)collect().catch(e=>{console.error('Ondo collection failed; existing history preserved. Check public API connectivity and collector permissions. ('+require('./log.cjs').safe(e)+')');process.exitCode=1;});
 module.exports={collect};
