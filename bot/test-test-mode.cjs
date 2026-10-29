@@ -1,3 +1,5 @@
+// Repo-level check: skipped when only bot/ is present (e.g. a server copy).
+if(!require('node:fs').existsSync(require('node:path').join(__dirname,'..','scripts'))){console.log('Skipped: scripts/ not present');process.exit(0);}
 const A=require('node:assert/strict'),path=require('node:path'),fs=require('node:fs'),os=require('node:os'),{spawnSync}=require('node:child_process');
 // Bot username is configurable for a separate test bot; production default unchanged.
 delete process.env.PAIRDESK_BOT_USERNAME;const I=require('./identity.cjs');A.equal(I.username(),'pairdeskbot');

@@ -1,0 +1,14 @@
+{
+  "name": "pairdesk",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Pairdesk pair-trading research scanner, Telegram monitor and dashboard",
+  "license": "UNLICENSED",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node scripts/run-tests.cjs",
+    "sync-dashboard": "node scripts/sync-dashboard.cjs",
+    "check-dashboard": "node scripts/sync-dashboard.cjs --check",
+    "test-bot": "bash scripts/test-run.sh"
+  }
+}

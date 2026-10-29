@@ -1,3 +1,5 @@
+// Repo-level check: skipped when only bot/ is present (e.g. a server copy).
+if(!require('node:fs').existsSync(require('node:path').join(__dirname,'..','scripts'))){console.log('Skipped: scripts/ not present');process.exit(0);}
 const A=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),{execFileSync}=require('node:child_process');
 const root=path.join(__dirname,'..'),dist=path.join(root,'dashboard','dist');
 // Dashboard copies must be byte-identical to the bot's research code (same confirm rule, thresholds, funding).

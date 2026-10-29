@@ -7,11 +7,15 @@ for required in "$node" /opt/pairdesk/friends.cjs /opt/pairdesk/shared-channel.c
  [[ -f "$required" ]] || { echo 'Install the existing five-exchange, friends and monitoring updates first.'; exit 1; }
 done
 "$node" -e 'if(Number(process.versions.node.split(".")[0])<24||typeof WebSocket!=="function")process.exit(1)' || { echo 'Node 24 with WebSocket support is required.'; exit 1; }
-files=(linked-history.cjs risex-wallet.cjs qfex-wallet.cjs wallet-feeds.cjs wallet-sync.cjs friends.cjs buttons.cjs setup-seven-wallets.py monitor-feeds.cjs extra-venues.cjs new-venues.cjs positions.cjs shared-channel.cjs monitor.cjs performance.cjs scanner.cjs alert-rules.cjs check-seven-exchanges.cjs)
-for file in "${files[@]}"; do if [[ "$file" == *.cjs ]]; then "$node" --check "$file"; fi; done
+# Every runtime module the scanner/monitor load (shared research code, funding, risk,
+# retries, config, heartbeat, logging, identity) so the server never mixes versions.
+files=(linked-history.cjs risex-wallet.cjs qfex-wallet.cjs wallet-feeds.cjs wallet-sync.cjs friends.cjs buttons.cjs setup-seven-wallets.py monitor-feeds.cjs extra-venues.cjs new-venues.cjs positions.cjs shared-channel.cjs monitor.cjs performance.cjs scanner.cjs alert-rules.cjs check-seven-exchanges.cjs
+ engine.js feeds.js scan-engine.js funding.js thresholds.js data.cjs trade-plan.cjs storage.cjs telegram.cjs config.cjs risk.cjs http.cjs solana.cjs heartbeat.cjs log.cjs identity.cjs
+ phoenix-wallet.cjs ondo-wallet.cjs wallet-link.cjs collector.cjs collector-fetch.cjs ondo-collector.cjs setup-channel.cjs check-new-venues.cjs pairdesk-config.example.json)
+for file in "${files[@]}"; do if [[ "$file" == *.cjs || "$file" == *.js ]]; then "$node" --check "$file"; fi; done
 python3 -c 'import ast,pathlib; ast.parse(pathlib.Path("setup-seven-wallets.py").read_text())'
 for test in test*.cjs; do "$node" "$test"; done
-"$node" -e 'if(require("./alert-rules.cjs").MIN_ALERT_SCORE!==65||require("./scan-engine.js").MIN_CONFIRM_Z!==1)process.exit(1)'
+"$node" -e 'if(require("./alert-rules.cjs").MIN_ALERT_SCORE!==65||require("./scan-engine.js").MIN_CONFIRM_Z!==1||require("./thresholds.js").DEFAULTS.minAlertScore!==65||require("./thresholds.js").DEFAULTS.minConfirmZ!==1)process.exit(1)'
 backup="/opt/pairdesk-seven-wallet-backup-$(date +%Y%m%d-%H%M%S)"
 mkdir -m 700 "$backup"
 for file in "${files[@]}"; do if [[ -f "/opt/pairdesk/$file" ]]; then cp -p "/opt/pairdesk/$file" "$backup/"; fi; done
@@ -32,7 +36,7 @@ trap rollback ERR
 systemctl stop pairdesk-alerts.timer pairdesk-alerts.service pairdesk-monitor.service
 if [[ -f /var/lib/pairdesk/positions.json ]]; then cp -p /var/lib/pairdesk/positions.json "$backup/positions-state.json"; fi
 for file in "${files[@]}"; do install -m 644 "$file" "/opt/pairdesk/$file"; done
-"$node" -e 'const p="/opt/pairdesk/"; for(const f of ["extra-venues.cjs","new-venues.cjs","positions.cjs","shared-channel.cjs","performance.cjs","monitor-feeds.cjs","friends.cjs"])require(p+f);if(require(p+"alert-rules.cjs").MIN_ALERT_SCORE!==65)process.exit(1)'
+"$node" -e 'const p="/opt/pairdesk/"; for(const f of ["extra-venues.cjs","new-venues.cjs","positions.cjs","shared-channel.cjs","performance.cjs","monitor-feeds.cjs","friends.cjs","config.cjs","risk.cjs","heartbeat.cjs","scan-engine.js","trade-plan.cjs","wallet-sync.cjs"])require(p+f);if(require(p+"alert-rules.cjs").MIN_ALERT_SCORE!==65)process.exit(1)'
 if $monitor; then systemctl start pairdesk-monitor.service; fi
 if $timer; then systemctl start pairdesk-alerts.timer; fi
 trap - ERR
