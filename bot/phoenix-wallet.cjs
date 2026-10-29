@@ -1,4 +1,4 @@
-const D=require('./data.cjs');
+const D=require('./data.cjs'),Risk=require('./risk.cjs');
 const BASE='https://perp-api.phoenix.trade';
 const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim())?Number(v):NaN;
 const near=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=Math.max(1e-9,Math.abs(b)*1e-8);
@@ -15,7 +15,7 @@ function parse(data,markets,address,index,subaccounts,at,now=Date.now()){
    if(!m||!Number.isInteger(m.baseLotsDecimals)||m.baseLotsDecimals<0||m.baseLotsDecimals>12)throw Error('Missing Phoenix lot conversion');
    const quantity=Math.abs(lots)/10**m.baseLotsDecimals,price=num(p.entryPriceUsd);
    if(!(price>0)||!Number.isFinite(price*quantity)||p.basePositionUnits!==undefined&&!near(num(p.basePositionUnits),lots/10**m.baseLotsDecimals))throw Error('Invalid Phoenix price or units');
-   return [{symbol:p.symbol,side:lots>0?'LONG':'SHORT',quantity,price,enteredAt:null,generation:null}];
+   return [Risk.withLiquidation({symbol:p.symbol,side:lots>0?'LONG':'SHORT',quantity,price,enteredAt:null,generation:null},p)];
   });
   if(new Set(rows.map(r=>r.symbol)).size!==rows.length)throw Error('Duplicate Phoenix position');
   return {account:'Phoenix:'+index+':'+sub,venue:'Phoenix',address,index,subaccountIndex:sub,at,revision:String(data.slot),ok:true,rows};

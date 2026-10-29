@@ -1,4 +1,4 @@
-const D=require('./data.cjs');
+const D=require('./data.cjs'),Risk=require('./risk.cjs');
 const num=v=>typeof v==='number'||typeof v==='string'&&v.trim()!==''?Number(v):NaN;
 const addressOK=(a,w)=>typeof a==='string'&&a.toLowerCase()===w.toLowerCase();
 function arcus(data,w,index,now){
@@ -10,7 +10,7 @@ function arcus(data,w,index,now){
   if(!Number.isFinite(signed))throw Error('Invalid Arcus size');
   if(!signed)continue;
   if(!(price>0)||!Number.isFinite(price)||!Number.isFinite(price*signed)||(r.side==='LONG'&&signed<0)||(r.side==='SHORT'&&signed>0))throw Error('Invalid Arcus position');
-  rows.push({symbol:r.marketDisplayName,side:r.side,quantity:Math.abs(signed),price,enteredAt:null,generation:null});
+  rows.push(Risk.withLiquidation({symbol:r.marketDisplayName,side:r.side,quantity:Math.abs(signed),price,enteredAt:null,generation:null},r));
  }
  return {account:'Arcus:'+index,venue:'Arcus',address:w,index,at:now,ok:true,rows};
 }
@@ -43,7 +43,7 @@ function popdex(data,w,now){
   if(!Number.isFinite(quantity)||quantity<0)throw Error('Invalid Popdex size');
   if(!quantity)continue;
   if(!['Long','Short'].includes(r.positionSide)||typeof r.symbol!=='string'||!r.id||!(price>0)||!Number.isFinite(price)||!Number.isFinite(price*quantity)||!(enteredAt>0)||enteredAt>now+5000)throw Error('Invalid Popdex position');
-  rows.push({symbol:r.symbol,side:r.positionSide.toUpperCase(),quantity,price,enteredAt,generation:String(r.id)});
+  rows.push(Risk.withLiquidation({symbol:r.symbol,side:r.positionSide.toUpperCase(),quantity,price,enteredAt,generation:String(r.id)},r));
  }
  return {account:'Popdex',venue:'Popdex',at:now,ok:true,revision:String(data.blockNumber),rows};
 }

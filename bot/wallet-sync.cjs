@@ -1,6 +1,8 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const hash=v=>crypto.createHash('sha256').update(JSON.stringify(v)).digest('hex').slice(0,16);
 const key=r=>r.symbol+':'+r.side;
+// Liquidation prices move with funding/marks; they must not make a snapshot look unstable.
+const core=rows=>rows.map(({liquidationPrice,...r})=>r);
 const fresh=(x,now)=>x?.ok&&now-x.at<=120000&&x.at<=now+5000;
 function plans(dir){
  const folder=path.join(dir,'signals');if(!fs.existsSync(folder))return [];
@@ -23,7 +25,7 @@ function reconcile(s,snapshots,saved,queue,now=Date.now()){
   const prior=oldAccounts[x.account];
   // One duplicate identity makes the entire account snapshot ambiguous.
   if(x.ok&&new Set(x.rows.map(key)).size!==x.rows.length)x.ok=false;
-  x.stable=!!(fresh(x,now)&&fresh(prior,now)&&x.at>prior.at&&(x.venue!=='Phoenix'||x.revision!==prior.revision)&&hash(x.rows)===hash(prior.rows));
+  x.stable=!!(fresh(x,now)&&fresh(prior,now)&&x.at>prior.at&&(x.venue!=='Phoenix'||x.revision!==prior.revision)&&hash(core(x.rows))===hash(core(prior.rows)));
   x.previous=prior?{ok:prior.ok,at:prior.at,revision:prior.revision}:null;
   state.accounts[x.account]=x;
   const monitored=Object.values(s.positions).some(p=>!p.closedAt&&p.wallet?.account===x.account);
@@ -51,7 +53,8 @@ function reconcile(s,snapshots,saved,queue,now=Date.now()){
   update(p,rows);p.walletSuspended=false;
   notice('linked:'+p.id,'WALLET TRACKING ACTIVE\n'+p.id+': '+x.account+' '+p.plan.a.id+' / '+p.plan.b.id+'\nActual sizes and average entry prices are synced. Saved pair targets and time limit remain fixed. P&L covers remaining open size only, excluding realized partial exits, fees and funding. No orders placed.');
  }
- function update(p,rows){p.priceA=rows[0].price;p.priceB=rows[1].price;p.notionalA=rows[0].price*rows[0].quantity;p.notionalB=rows[1].price*rows[1].quantity;}
+ function update(p,rows){p.priceA=rows[0].price;p.priceB=rows[1].price;p.notionalA=rows[0].price*rows[0].quantity;p.notionalB=rows[1].price*rows[1].quantity;
+  const liq={a:rows[0].liquidationPrice??null,b:rows[1].liquidationPrice??null};if(liq.a||liq.b)p.liquidation=liq;else delete p.liquidation;}
  // Attach an existing manual registration only when both its account and its legs are unique.
  for(const p of active().filter(p=>!p.wallet&&valid(p.plan))){
   const candidates=snapshots.filter(x=>fresh(x,now)&&x.stable&&x.venue===p.plan.venue).map(x=>({x,rows:legs(p.plan,x)})).filter(c=>eligible(p.plan,c.rows)&&c.rows.every(r=>!claimed(c.x.account,r)));

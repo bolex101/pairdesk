@@ -1,4 +1,4 @@
-const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),Risk=require('./risk.cjs');
 const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim())?Number(v):NaN;
 const near=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=Math.max(1e-9,Math.abs(b)*1e-8);
 function headers(key,route,time=Date.now()){
@@ -21,7 +21,7 @@ function parse(data,address,now=Date.now()){
   if(!Number.isFinite(signed)||!['long','short','neutral'].includes(p.direction))throw Error('Invalid Ondo position');
   if(!signed)return [];
   if(p.direction==='neutral'||typeof p.market!=='string'||!p.market.endsWith('-USD.P')||!(price>0)||!Number.isFinite(price*signed)||p.direction==='long'&&signed<0)throw Error('Invalid Ondo size or price');
-  return [{symbol:p.market,side:p.direction.toUpperCase(),quantity:Math.abs(signed),price,enteredAt:null,generation:null}];
+  return [Risk.withLiquidation({symbol:p.market,side:p.direction.toUpperCase(),quantity:Math.abs(signed),price,enteredAt:null,generation:null},p)];
  });
  if(new Set(rows.map(r=>r.symbol)).size!==rows.length)throw Error('Duplicate Ondo position');
  return {account:'Ondo',venue:'Ondo',address,at:now,ok:true,rows};

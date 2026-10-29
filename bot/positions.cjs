@@ -1,4 +1,4 @@
-const Buttons=require('./buttons.cjs');
+const Buttons=require('./buttons.cjs'),Risk=require('./risk.cjs');
 const HELP=['Pairdesk position monitoring','/open SIGNAL_ID — register actual fills from a NEW setup alert','/positions — open trades and last observations','/status — monitor health','/wallets — wallet sync health','/link SIGNAL_ID — review and link existing wallet fills','/performance — simulated results by score, before funding','/close POSITION_ID — mark both legs closed AFTER closing them on the exchange','/cancel — cancel registration','/test — labelled TP, stop and time-limit tests','/testbutton — try Register trade without creating a position','Notifications only. No orders placed. Periodic quotes can miss brief crossings.'].join('\n');
 function initial(){return {version:1,offset:0,positions:{},draft:null,outbox:[]};}
 function queue(s,id,text,replyMarkup){const chunks=text.match(/[\s\S]{1,3400}/g)||[''];for(let i=0;i<chunks.length;i++){const key=chunks.length===1?id:id+'-part'+i;if(!s.outbox.some(x=>x.id===key))s.outbox.push({id:key,text:chunks[i],...(i===chunks.length-1&&replyMarkup?{replyMarkup}:{})});}}
@@ -90,6 +90,7 @@ function evaluate(s,p,quotes,now=Date.now(),checkPrices=true){
  p.last=last;
  if(p.staleSince&&p.recoveryPending){queue(s,p.id+':recovered:'+now,'Price monitoring resumed for '+p.id+'. Crossings during the data gap may have been missed.');p.recoveryPending=false;}
  p.staleSince=null;
+ Risk.check(s,p,quotes,now,queue);
  const shortA=p.plan.a.side==='SHORT',rounded=Number(last.pnl.toFixed(2));
  const outcome=rounded>0?'PROFIT':rounded<0?'LOSS':'APPROX. BREAK-EVEN';
  const amount=(rounded>0?'+':'')+rounded.toFixed(2);

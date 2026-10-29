@@ -1,5 +1,5 @@
 'use strict';
-const H=require('./linked-history.cjs'),X=require('./extra-venues.cjs'),ROOT='https://api.rise.trade';
+const Risk=require('./risk.cjs'),H=require('./linked-history.cjs'),X=require('./extra-venues.cjs'),ROOT='https://api.rise.trade';
 const addressOK=w=>/^0x[a-fA-F0-9]{40}$/.test(w);
 async function get(route){
  let r;try{r=await fetch(ROOT+route,{redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});}catch{throw Error('RISEx account connection unavailable');}
@@ -14,7 +14,7 @@ function parse(data,address,now=Date.now()){
  const signed=H.num(r.size);if(!Number.isFinite(signed))throw Error('RISEx invalid size');if(!signed)continue;
  const price=H.num(r.avg_entry_price),mark=H.num(r.mark_price),pnl=H.num(r.unrealized_pnl);
  if(!/^[A-Z0-9]+\/USDC$/.test(r.market_name)||!/^\d+$/.test(r.market_id)||![0,1].includes(r.side)||r.side!==(signed>0?0:1)||!(price>0)||!Number.isFinite(price*signed)||!(mark>0)||!Number.isFinite(pnl)||Math.abs((mark-price)*signed-pnl)>Math.max(.02,Math.abs(pnl)*.001))throw Error('RISEx position units, side or price unverified');
- rows.push({symbol:r.market_name.replace('/','-'),marketId:r.market_id,side:signed>0?'LONG':'SHORT',quantity:Math.abs(signed),price,enteredAt:null,generation:null});
+ rows.push(Risk.withLiquidation({symbol:r.market_name.replace('/','-'),marketId:r.market_id,side:signed>0?'LONG':'SHORT',quantity:Math.abs(signed),price,enteredAt:null,generation:null},r));
  }
  if(new Set(rows.map(r=>r.symbol)).size!==rows.length)throw Error('RISEx duplicate market position');
  return {account:'RISEx',venue:'RISEx',address,at:now,ok:true,rows};
