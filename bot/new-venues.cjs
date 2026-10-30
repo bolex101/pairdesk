@@ -13,6 +13,13 @@ function listOndo(data){
   bid:null,ask:null,spread:null,quoteTime:null,requireQuote:true,historySource:'Locally sampled Ondo order-book midpoints; not exchange candles'
  }));
 }
+/* Phoenix /v1/markets/stats/latest reports funding in PERCENT, not as a fraction:
+   current_funding_rate is %/hour, eight_hour_funding_rate = 8x that, annualized_funding_rate = 8h x 1095.
+   Verified 2026-10-31 against the live API: BTC current_funding_rate 0.00355 sits below the market's
+   maxFundingRatePerIntervalPercentage cap (~0.23 %/h) only if read as percent, and it tracks the
+   mark/oracle premium (%) / 24 (fundingPeriodSeconds 86400). Read as a fraction it would be ~3,100%/yr.
+   Returns the 8-hour rate as a FRACTION of notional (positive = longs pay), or NaN. */
+function phoenixEightHourFraction(r){const v=number(r?.eight_hour_funding_rate);return Number.isFinite(v)?v/100:NaN;}
 function listPhoenix(config,stats){
  if(!Array.isArray(config?.markets)||!Array.isArray(stats?.markets)||config.exchange?.active!==true)throw Error('Phoenix market response invalid/inactive');
  const by=new Map(stats.markets.map(r=>[r.symbol,r]));
@@ -20,7 +27,7 @@ function listPhoenix(config,stats){
   id:m.symbol,symbol:m.symbol,tradfi:m.commodityMetadata?.isCommodity===true,type:'linear-perpetual',
   status:m.marketStatus==='active'?'Trading':'Unavailable',offHours:m.commodityMetadata?.isAfterHours!==false,
   price:number(r.mark_price),volume:number(r.day_volume_usd),takerBps:number(m.takerFee)*10000,
-  funding:number(r.eight_hour_funding_rate),fundingHourly:Fd.perp(r.eight_hour_funding_rate,8*3600,'Phoenix 8h funding rate'),
+  funding:phoenixEightHourFraction(r),fundingHourly:Fd.perp(phoenixEightHourFraction(r),8*3600,'Phoenix 8h funding rate (API percent /100)'),
   bid:null,ask:null,spread:null,quoteTime:null,requireQuote:true,statsTime:number(r.timestamp_ms),historySource:'Phoenix exchange candles (external backfills excluded)'
  };});
 }
@@ -71,4 +78,4 @@ async function history(venue,id,now=Date.now()){
  const to=Math.floor(now/300000)*300000;
  return candles(id,await D.get(PHOENIX+'/v1/candles_v2/'+encodeURIComponent(id)+'?'+new URLSearchParams({timeframe:'5m',from:String(to-300*300000),to:String(to),limit:'1000',includePartial:'false'})),now);
 }
-module.exports={quoteMany:X.quoteMany,names,markets,listOndo,listPhoenix,book,quote,enrich,candles,history};
+module.exports={quoteMany:X.quoteMany,names,markets,listOndo,listPhoenix,phoenixEightHourFraction,book,quote,enrich,candles,history};

@@ -21,7 +21,12 @@ const v=F.normalize('Variational',{listings:[{ticker:'NVDA-PERP',name:'NVIDIA Co
 near(v[0].fundingHourly.long,0.0001);near(v[1].fundingHourly.long,0.0001);near(v[1].fundingHourly.short,-0.00005);A.equal(v[2].fundingHourly,null);
 const pop=F.normalize('Popdex',{code:'200',data:[{symbol:'NVDAUSDT',markPrice:'1',fundingRate:'0.0001'}]},{code:'200',data:[{symbol:'NVDAUSDT',assetClass:'Rwa',fundingInterval:'1',feeRates:[]},{symbol:'B',assetClass:'Rwa',feeRates:[]}]});
 near(pop[0].fundingHourly.long,0.0001);A.equal(pop[1].fundingHourly,null);
-const ph=N.listPhoenix({exchange:{active:true},markets:[{symbol:'XAU',marketStatus:'active',takerFee:0.0005,commodityMetadata:{isCommodity:true,isAfterHours:false}}]},{markets:[{symbol:'XAU',mark_price:1,eight_hour_funding_rate:0.0008}]})[0];near(ph.fundingHourly.long,0.0001);
+const ph=N.listPhoenix({exchange:{active:true},markets:[{symbol:'XAU',marketStatus:'active',takerFee:0.0005,commodityMetadata:{isCommodity:true,isAfterHours:false}}]},{markets:[{symbol:'XAU',mark_price:1,eight_hour_funding_rate:0.08}]})[0];near(ph.fundingHourly.long,0.0001);near(ph.funding,0.0008);
+// Phoenix reports PERCENT: live BTC sample (2026-10-31) 8h 0.0283772463881 % => 0.0035 %/h => ~31 %/yr, not ~3,100 %/yr.
+near(N.phoenixEightHourFraction({eight_hour_funding_rate:0.0283772463881}),0.000283772463881);
+const btc=N.listPhoenix({exchange:{active:true},markets:[{symbol:'BTC',marketStatus:'active',takerFee:0.00035}]},{markets:[{symbol:'BTC',mark_price:77187,eight_hour_funding_rate:0.0283772463881,annualized_funding_rate:31.0730847949}]})[0];
+near(btc.fundingHourly.long*24*365*100,31.0730847949,1e-6);A.ok(btc.fundingHourly.long*24*365<1,'Phoenix BTC funding must be a sane fraction');
+A.equal(N.listPhoenix({exchange:{active:true},markets:[{symbol:'X',marketStatus:'active'}]},{markets:[{symbol:'X'}]})[0].fundingHourly,null);
 const ondo=N.listOndo({success:true,result:[{productType:'perpetual',contractType:'linear',market:'NVDA-USD.P',tags:['Stock'],bid:'1',ask:'1',fundingRate:'0.0001',takerFee:'0.0005',isClosed:false}]})[0];A.equal(ondo.fundingHourly,null);
 // Scan analysis: funding raises the bar when the pair pays, income credit is capped at half the friction.
 const now=1800000000000,bar=300000,rows=Array.from({length:240},(_,i)=>({t:now-(240-i)*bar,a:Math.exp(4+i*.001+.01*Math.sin(i*.4)),b:Math.exp(4+i*.001)}));

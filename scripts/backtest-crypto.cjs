@@ -10,7 +10,7 @@
 // QFEX/RISEx list no crypto; Ondo and Variational have no public candle history.
 // Funding: Arcus = real hourly funding history (/v1/fundingRates, rate per hour). Popdex/Phoenix =
 // today's snapshot applied to all history (as in the stock run). Phoenix's eight_hour_funding_rate is
-// a PERCENT (annualized_funding_rate = 8h*3*365), so it is divided by 100 here.
+// a PERCENT (annualized_funding_rate = 8h*3*365); bot/new-venues.cjs (phoenixEightHourFraction) divides by 100.
 // Spreads/fees: today's snapshot applied to all history (historical books are not public).
 const fs=require('node:fs'),path=require('node:path');
 const bot=path.join(__dirname,'..','bot');
@@ -41,7 +41,7 @@ async function marketRows(v){
  if(v==='Popdex'){const [d,c]=await Promise.all([D.get(pop+'market/tickers?category=FUTURES&limit=100'),D.get(pop+'config/symbols')]);return F.normalize(v,d,c);}
  if(v==='Arcus'){const rows=F.normalize(v,await D.get('https://api.arcus.xyz/v1/markets')),u=pickUniverse(rows),out=[];
   for(const r of rows){if(!u.includes(r)){out.push(r);continue;}let q={};try{q=await D.get('https://api.arcus.xyz/v1/bbo/'+encodeURIComponent(r.id));}catch{}out.push(D.arcusQuote(r,q));await pause(300);}return out;}
- if(v==='Phoenix'){const rows=(await N.markets(v)).map(r=>{const f=r.fundingHourly;return {...r,fundingHourly:f?{long:f.long/100,short:f.short/100,source:'Phoenix 8h funding rate (percent, /100)'}:null};});
+ if(v==='Phoenix'){const rows=await N.markets(v); // percent->fraction handled by N.phoenixEightHourFraction
   const u=pickUniverse(rows),q=new Map((await N.enrich(v,u)).map(m=>[m.id,m]));return rows.map(r=>q.get(r.id)||r);}
  throw Error('Unsupported venue '+v);
 }
