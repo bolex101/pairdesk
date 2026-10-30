@@ -47,7 +47,7 @@ function check(s,p,quotes,now,queue){
   if(d===null)continue;
   const st=p.risk['liq_'+leg]??={active:false,level:null};
   if(episode(st,d<=zone,d,(n,o)=>n<=o/2,d>zone*4/3))queue(s,p.id+':risk:liq:'+leg+':'+now,['PAIRDESK — LIQUIDATION RISK',label,
-   '• '+side+' '+p.plan[leg].id+' is '+(Math.max(d,0)*100).toFixed(1)+'% from its liquidation price '+Number(liq.toPrecision(8))+' (mid '+Number(mids[leg].toPrecision(8))+').',
+   '• '+require('./trade-plan.cjs').sideLabel(side)+' '+p.plan[leg].id+' is '+(Math.max(d,0)*100).toFixed(1)+'% from its liquidation price '+Number(liq.toPrecision(8))+' (mid '+Number(mids[leg].toPrecision(8))+').',
    '• Alert threshold: '+settings.liquidationAlertPct+'%. Add margin or reduce BOTH legs together to keep the hedge.',
    '• Liquidation price as reported by the exchange account feed. I have not changed anything.'].join('\n'));
  }

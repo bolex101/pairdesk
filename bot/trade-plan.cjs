@@ -37,10 +37,22 @@ function build(p,venue,now=Date.now(),input={}){
   targetNet:targetGross-cost-fundingCost,stopLoss:c.gross*(c.stopZ-magnitude)*p.sd/(1+p.beta)+cost+fundingCost};
 }
 const price=n=>Number(n.toPrecision(8)).toString();
+// Unmistakable leg instructions shown at the top of every alert: one BUY, one SELL.
+const LEG_REMINDER='⚠️ One leg BUY, one leg SELL. Never both the same direction.';
+function sideLabel(side){return side==='LONG'?'🟢 BUY (LONG)':side==='SHORT'?'🔴 SELL (SHORT)':'⚠️ UNKNOWN SIDE';}
+const money=n=>Number.isFinite(n)?'$'+Math.round(n).toLocaleString('en-US'):'$?';
+const entryPrice=n=>!Number.isFinite(n)?'?':Math.abs(n)>=1?n.toFixed(2):Number(n.toPrecision(4)).toString();
+function legLine(m){return sideLabel(m.side)+' '+m.id+(Number.isFinite(m.notional)?' — '+money(m.notional):'')+(Number.isFinite(m.entry)?' at '+entryPrice(m.entry):'');}
+// Returns [] unless the plan has exactly one LONG and one SHORT leg.
+function actionLines(p){
+ if(!p?.a||!p?.b||[p.a.side,p.b.side].sort().join()!=='LONG,SHORT')return [];
+ const order=p.a.side==='LONG'?[p.a,p.b]:[p.b,p.a];
+ return [...order.map(legLine),LEG_REMINDER];
+}
 function lines(p){
  if(!p.ready)return ['MANAGEMENT PLAN UNAVAILABLE: '+p.reason];
  const currency=p.venue==='Popdex'?'USDT':'USD-equivalent';
- const leg=m=>`${m.side} ${m.id}: ${m.notional.toFixed(2)} ${currency} @ ~${price(m.entry)} (${price(m.units)} underlying-equivalent units)`;
+ const leg=m=>`${sideLabel(m.side)} ${m.id}: ${m.notional.toFixed(2)} ${currency} @ ~${price(m.entry)} (${price(m.units)} underlying-equivalent units)`;
  return ['MANUAL PAIR PLAN',`Gross ${p.gross.toFixed(2)} ${currency}, both legs combined (not margin)`,
   `Hedge beta ${p.beta.toPrecision(12)}: B notional / A notional`,leg(p.a),leg(p.b),
   'Entry refs: short at bid, long at ask; indicative, not guaranteed fills.',
@@ -58,4 +70,4 @@ function lines(p){
   'Quantities are estimates, not contract counts: verify lot sizes, multipliers and minimums. Funding is estimated from current rates and can change; market impact excluded; losses may exceed estimates.',
   'No orders/stops placed. Monitoring begins after verified wallet matching (Arcus/Popdex) or Telegram registration. Check /positions.'];
 }
-module.exports={DEFAULTS,settings,build,lines};
+module.exports={DEFAULTS,settings,build,lines,sideLabel,legLine,actionLines,LEG_REMINDER};

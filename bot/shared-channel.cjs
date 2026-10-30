@@ -1,4 +1,4 @@
-const Identity=require('./identity.cjs');
+const Identity=require('./identity.cjs'),Plan=require('./trade-plan.cjs');
 const fs=require('node:fs'),path=require('node:path'),Telegram=require('./telegram.cjs');
 function target(value){
  const text=String(value||'').trim(),match=/^https:\/\/t\.me\/c\/(\d+)\/\d+(?:\?.*)?$/.exec(text);
@@ -16,7 +16,8 @@ function message(a){
  // Explicit public-field allowlist: never serialize account state, user text or full plans.
  return [
  'PAIRDESK — SHARED RESEARCH SETUP',a.venue+' · '+q.a.id+' / '+q.b.id,'',
- '• Direction: '+q.a.side+' '+q.a.id+' / '+q.b.side+' '+q.b.id,
+ ...Plan.actionLines(q),'',
+ '• Direction: '+Plan.sideLabel(q.a.side)+' '+q.a.id+' / '+Plan.sideLabel(q.b.side)+' '+q.b.id,
  '• Score: '+n(p.score,0)+'/100 (not a win probability)',
  '• Signal z: '+n(p.z)+'; 15m z: '+n(p.confirm),
  '• Correlation: '+n(p.corr)+'; estimated half-life: '+n(p.half)+' min',

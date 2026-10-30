@@ -1,13 +1,13 @@
-const Identity=require('./identity.cjs');
+const Identity=require('./identity.cjs'),{sideLabel:L,LEG_REMINDER}=require('./trade-plan.cjs');
 const Buttons=require('./buttons.cjs'),Risk=require('./risk.cjs');
 const HELP=['Pairdesk position monitoring','/open SIGNAL_ID — register actual fills from a NEW setup alert','/positions — open trades and last observations','/status — monitor health','/wallets — wallet sync health','/link SIGNAL_ID — review and link existing wallet fills','/performance — simulated results by score, before funding','/close POSITION_ID — mark both legs closed AFTER closing them on the exchange','/cancel — cancel registration','/test — labelled TP, stop and time-limit tests','/testbutton — try Register trade without creating a position','Notifications only. No orders placed. Periodic quotes can miss brief crossings.'].join('\n');
 function initial(){return {version:1,offset:0,positions:{},draft:null,outbox:[]};}
 function queue(s,id,text,replyMarkup){const chunks=text.match(/[\s\S]{1,3400}/g)||[''];for(let i=0;i<chunks.length;i++){const key=chunks.length===1?id:id+'-part'+i;if(!s.outbox.some(x=>x.id===key))s.outbox.push({id:key,text:chunks[i],...(i===chunks.length-1&&replyMarkup?{replyMarkup}:{})});}}
 function positive(t){if(!/^\d+(\.\d+)?$/.test(t))return null;const n=Number(t);return Number.isFinite(n)&&n>0&&n<=1e9?n:null;}
 function date(t){return new Date(t).toLocaleString('en-GB',{timeZone:'Africa/Lagos',hour12:false})+' Lagos';}
-function summary(p){const l=p.last;return [p.id+': '+p.plan.venue+' '+p.plan.a.id+'/'+p.plan.b.id,p.plan.a.side+' '+p.notionalA.toFixed(2)+' @ '+p.priceA+'; '+p.plan.b.side+' '+p.notionalB.toFixed(2)+' @ '+p.priceB,'Time limit '+date(p.deadline),l&&!p.staleSince&&!p.walletSuspended?'Last z '+l.z.toFixed(2)+'; close-value P&L '+l.pnl.toFixed(2)+' before fees/funding, observed '+date(l.at):p.walletSuspended?'Wallet verification unavailable; TP/stop checks paused':'Fresh price check pending or unavailable'].join('\n');}
+function summary(p){const l=p.last;return [p.id+': '+p.plan.venue+' '+p.plan.a.id+'/'+p.plan.b.id,L(p.plan.a.side)+' '+p.plan.a.id+' '+p.notionalA.toFixed(2)+' @ '+p.priceA+'; '+L(p.plan.b.side)+' '+p.plan.b.id+' '+p.notionalB.toFixed(2)+' @ '+p.priceB,'Time limit '+date(p.deadline),l&&!p.staleSince&&!p.walletSuspended?'Last z '+l.z.toFixed(2)+'; close-value P&L '+l.pnl.toFixed(2)+' before fees/funding, observed '+date(l.at):p.walletSuspended?'Wallet verification unavailable; TP/stop checks paused':'Fresh price check pending or unavailable'].join('\n');}
 const fields=['priceA','notionalA','priceB','notionalB'];
-function prompt(d){const p=d.plan;return ['Actual average fill price for '+p.a.side+' '+p.a.id+'? Send a positive number.','Actual '+p.a.id+' position value at entry, in quote currency (not margin or contract count)?','Actual average fill price for '+p.b.side+' '+p.b.id+'?','Actual '+p.b.id+' position value at entry, in quote currency (not margin)?','How many minutes ago did BOTH legs finish filling? Send 0 if just now, or a number up to 10080.'][d.step];}
+function prompt(d){const p=d.plan;return ['Actual average fill price for '+L(p.a.side)+' '+p.a.id+'? Send a positive number.','Actual '+p.a.id+' position value at entry, in quote currency (not margin or contract count)?','Actual average fill price for '+L(p.b.side)+' '+p.b.id+'?','Actual '+p.b.id+' position value at entry, in quote currency (not margin)?','How many minutes ago did BOTH legs finish filling? Send 0 if just now, or a number up to 10080.'][d.step];}
 function handle(s,u,chatId,loadPlan,now=Date.now(),extraCommand){
  if(!Number.isSafeInteger(u.update_id)||u.update_id<s.offset)return;
  s.offset=u.update_id+1;
@@ -42,7 +42,7 @@ function handle(s,u,chatId,loadPlan,now=Date.now(),extraCommand){
   const p=loadPlan(id);
   if(!p||!p.ready||!['Popdex','Arcus','Variational','Ondo','Phoenix','QFEX','RISEx'].includes(p.venue)||![p.beta,p.alpha,p.sd,p.tpZ,p.stopZ,p.maxHoldMinutes,p.createdAt].every(Number.isFinite)||p.beta<=0||p.sd<=0){reply('Saved signal missing or invalid. Use a new alert after this upgrade.');return;}
   s.draft={signalId:id,plan:JSON.parse(JSON.stringify(p)),step:0,startedAt:now,values:{}};
-  reply('Register an ALREADY OPEN trade: '+p.venue+', '+p.a.side+' '+p.a.id+' / '+p.b.side+' '+p.b.id+'.\nNo orders placed. /cancel stops registration.\n'+prompt(s.draft));return;
+  reply('Register an ALREADY OPEN trade: '+p.venue+', '+L(p.a.side)+' '+p.a.id+' / '+L(p.b.side)+' '+p.b.id+'.\n'+LEG_REMINDER+'\nNo orders placed. /cancel stops registration.\n'+prompt(s.draft));return;
  }
  const d=s.draft;
  if(!d){reply(HELP);return;}
@@ -53,7 +53,7 @@ function handle(s,u,chatId,loadPlan,now=Date.now(),extraCommand){
   if(enteredAt<d.plan.createdAt-60000){reply('That entry predates this signal. Use the signal you actually traded; /cancel to stop.');return;}
   d.values.enteredAt=enteredAt;d.step=5;
   const v=d.values,ratio=v.notionalB/v.notionalA;
-  reply(['CONFIRM registration for '+d.plan.venue,d.plan.a.side+' '+d.plan.a.id+': '+v.notionalA+' @ '+v.priceA,d.plan.b.side+' '+d.plan.b.id+': '+v.notionalB+' @ '+v.priceB,'Entry '+date(enteredAt),'Fixed TP z '+d.plan.tpZ+', stop z '+d.plan.stopZ+'; time exit '+date(enteredAt+d.plan.maxHoldMinutes*60000)+'.',Math.abs(ratio/d.plan.beta-1)>.1?'Actual allocation differs from the suggested hedge by over 10%; thresholds may not match profitable P&L.':'',enteredAt>d.plan.expiresAt?'Entry was after the signal validity window. This records your existing trade, not a new entry recommendation.':'','Send CONFIRM to start monitoring, or /cancel. No orders will be placed.'].filter(Boolean).join('\n'));return;
+  reply(['CONFIRM registration for '+d.plan.venue,L(d.plan.a.side)+' '+d.plan.a.id+': '+v.notionalA+' @ '+v.priceA,L(d.plan.b.side)+' '+d.plan.b.id+': '+v.notionalB+' @ '+v.priceB,'Entry '+date(enteredAt),'Fixed TP z '+d.plan.tpZ+', stop z '+d.plan.stopZ+'; time exit '+date(enteredAt+d.plan.maxHoldMinutes*60000)+'.',Math.abs(ratio/d.plan.beta-1)>.1?'Actual allocation differs from the suggested hedge by over 10%; thresholds may not match profitable P&L.':'',enteredAt>d.plan.expiresAt?'Entry was after the signal validity window. This records your existing trade, not a new entry recommendation.':'','Send CONFIRM to start monitoring, or /cancel. No orders will be placed.'].filter(Boolean).join('\n'));return;
  }
  if(text.toUpperCase()!=='CONFIRM'){reply('Send CONFIRM, or /cancel to enter the fills again.');return;}
  const id='p'+u.update_id.toString(36);

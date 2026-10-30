@@ -19,12 +19,18 @@ function selectAlerts(venue,results,previous={},now=Date.now(),cooldown=3600000)
 function message(a){
  const p=a.pair,number=v=>Number.isFinite(v)?v.toFixed(2):'unavailable';
  const plan=Plan.lines(a.plan||{ready:false,reason:'Plan not supplied'});
+ // Fall back to the signal z sign (z>0: sell A, buy B) when no ready plan carries leg sizes.
+ const fallback={a:{id:p.a.id,side:p.z>0?'SHORT':'LONG'},b:{id:p.b.id,side:p.z>0?'LONG':'SHORT'}};
+ const legs=Plan.actionLines(a.plan?.ready?a.plan:fallback);
+ const direction=[a.plan?.ready?a.plan:fallback].map(q=>Plan.sideLabel(q.a.side)+' '+q.a.id+' / '+Plan.sideLabel(q.b.side)+' '+q.b.id)[0];
  return [
   'Pairdesk: new research setup',
   a.venue+' · '+p.a.id+' / '+p.b.id,
   '',
+  ...legs,
+  '',
   'SIGNAL DETAILS',
-  '• Direction: '+a.side,
+  '• Direction: '+direction,
   '• Score: '+p.score+'/100',
   '• Signal z: '+number(p.z),
   '• 15m z: '+number(p.confirm),
