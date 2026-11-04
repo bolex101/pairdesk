@@ -8,22 +8,47 @@ function pairs(rows){const out=[];for(let i=0;i<rows.length;i++)for(let j=i+1;j<
 const MIN_CONFIRM_Z=T.DEFAULTS.minConfirmZ;
 const finite=x=>Number.isFinite(x);const clamp=x=>Math.max(0,Math.min(1,x));
 // Funding income may offset at most this share of friction, so projected income alone never justifies a trade.
-const FUNDING_DEFAULTS=Object.freeze({exitZ:0.3,maxHoldMinutes:120,fundingIncomeCreditMax:T.DEFAULTS.fundingIncomeCreditMax,requireKnownFunding:T.DEFAULTS.requireKnownFunding});
+const FUNDING_DEFAULTS=Object.freeze({exitZ:0.3,maxHoldMinutes:120,gross:1000,fundingIncomeCreditMax:T.DEFAULTS.fundingIncomeCreditMax,requireKnownFunding:T.DEFAULTS.requireKnownFunding});
 /* One fit window for z, beta, sd, half-life and the cointegration test. The fit uses the
    fitWindow bars BEFORE the current bar (no lookahead); z is the current bar vs that fit. */
 const MODEL_DEFAULTS=Object.freeze({fitWindow:T.DEFAULTS.fitWindow,adfLags:T.DEFAULTS.adfLags,adfLevel:T.DEFAULTS.adfLevel,minHalfLife:T.DEFAULTS.minHalfLife,maxHalfLife:T.DEFAULTS.maxHalfLife});
+const BAR=300000;
+/* Missing 5-minute bars, counted by DURATION: a weekend closure is hundreds of missing bars,
+   not "one gap". Duplicate or out-of-order bars count as one irregularity each. */
+function missingBars(rows){let m=0;for(let i=1;i<rows.length;i++){const d=rows[i].t-rows[i-1].t;m+=d===BAR?0:d>BAR?Math.round(d/BAR)-1:1;}return m;}
+/* Round-trip (enter + exit) price impact of ONE leg, in bps of that leg's notional, vs mid.
+   Walks the published book for the actual order size. A book with only top-of-book size
+   (book.complete false) can't show deeper liquidity: the share beyond it is charged at the
+   top price plus unknownDepthBps (plus popdexThinBookPenaltyBps on Popdex). A full book that
+   runs out is charged depthPenaltyBps on the unfilled share. No book: the quoted spread (old rule). */
+function legImpact(row,notional,o){
+ if(!finite(row.spread))return null;
+ const bk=row.book,bid=row.bid,ask=row.ask;
+ if(!bk||!(notional>0)||!(bid>0)||!(ask>=bid)||!Array.isArray(bk.bids)||!Array.isArray(bk.asks))return {bps:row.spread,unfilled:null,model:'spread'};
+ const mid=(bid+ask)/2,extra=bk.complete?o.depthPenaltyBps:o.unknownDepthBps+(bk.source==='Popdex'?o.popdexThinBookPenaltyBps:0);
+ const side=(levels,buy)=>{
+  const ls=levels.filter(l=>Array.isArray(l)&&l[0]>0&&l[1]>0).sort((x,y)=>buy?x[0]-y[0]:y[0]-x[0]);
+  let left=notional,impact=0,last=buy?ask:bid;
+  for(const [p,q] of ls){const take=Math.min(left,p*q);impact+=take*(buy?p-mid:mid-p)/mid;left-=take;last=p;if(left<=notional*1e-9){left=0;break;}}
+  impact+=left*(buy?last-mid:mid-last)/mid;
+  const unfilled=left/notional;return {bps:impact/notional*10000+unfilled*extra,unfilled};
+ };
+ const buy=side(bk.asks,true),sell=side(bk.bids,false);
+ return {bps:buy.bps+sell.bps,unfilled:Math.max(buy.unfilled,sell.unfilled),model:bk.complete?'book walk':'top of book + depth penalty'};
+}
 // Thresholds come from the shared config (thresholds.js); explicit options win.
 function analyze(pair,rows,E,now=Date.now(),slip,options={}){
- const o={exitZ:FUNDING_DEFAULTS.exitZ,maxHoldMinutes:FUNDING_DEFAULTS.maxHoldMinutes,...T.get(),...options};slip??=o.slippageBps;
+ const o={exitZ:FUNDING_DEFAULTS.exitZ,maxHoldMinutes:FUNDING_DEFAULTS.maxHoldMinutes,gross:FUNDING_DEFAULTS.gross,...T.get(),...options};slip??=o.slippageBps;
  const bars=o.minBars,half=Math.floor(bars/2),maxAge=o.maxQuoteAgeMs;
  const {a,b}=pair,result={...pair,rows,eligible:false,score:null,reasons:[],z:null,corr:null,half:null,cost:null,funding:null,totalCost:null,edge:null};
  if(rows.length<bars){result.reasons.push('Fewer than '+bars+' matched bars');return result;}
- const tail=rows.slice(-bars),last=tail.at(-1),gaps=tail.slice(1).filter((r,i)=>r.t-tail[i].t!==300000).length;
+ const tail=rows.slice(-bars),last=tail.at(-1),missing=missingBars(tail);
  if(now-last.t>900000)result.reasons.push('Latest candle is older than 15 minutes');
  if(now<last.t+300000)result.reasons.push('Incomplete or future candle');
- if(gaps>2)result.reasons.push('Too many gaps in recent history');
+ result.missingBars=missing;if(missing>o.maxMissingBars)result.reasons.push('Too many gaps in recent history');
  const flat=tail.slice(1).filter((r,i)=>r.a===tail[i].a||r.b===tail[i].b).length/(bars-1);if(flat>.2)result.reasons.push('More than 20% unchanged-price bars');
  if([a,b].some(r=>r.offHours||r.session==='BREAK'))result.reasons.push('Outside regular trading session');
+ if(o.excludePopdexOvernight&&[a,b].some(r=>r.session==='OVERNIGHT'))result.reasons.push('Popdex overnight session excluded');
  if([a,b].some(r=>!['ONLINE','Trading','Listed'].includes(r.status)))result.reasons.push('Market not open for normal trading');
  if([a,b].some(r=>r.quoteTime&&now-r.quoteTime>maxAge))result.reasons.push('Quote older than two minutes');
  if([a,b].some(r=>r.requireQuote&&(!Number.isFinite(r.quoteTime)||r.quoteTime<=0||now-r.quoteTime>maxAge||r.quoteTime>now+5000||!(r.bid>0)||!(r.ask>=r.bid))))result.reasons.push('Fresh two-sided quote unavailable');
@@ -39,8 +64,11 @@ function analyze(pair,rows,E,now=Date.now(),slip,options={}){
  result.adf=typeof E.adf==='function'?E.adf(residual,o.adfLags):null;
  if(o.adfLevel&&typeof E.adf==='function'&&!E.adfPass(result.adf,o.adfLevel))result.reasons.push('No cointegration evidence (ADF p '+(result.adf?.p||'n/a')+')');
  const wa=1/(1+s.beta),wb=1-wa;
- if(finite(a.takerBps)&&finite(b.takerBps)&&finite(a.spread)&&finite(b.spread))result.cost=2*(wa*a.takerBps+wb*b.takerBps)+wa*a.spread+wb*b.spread+2*slip;
- result.edge=Math.abs(s.z)*s.sd/(1+s.beta)*10000;
+ const ia=legImpact(a,o.gross*wa,o),ib=legImpact(b,o.gross*wb,o);
+ if(finite(a.takerBps)&&finite(b.takerBps)&&ia&&ib){result.cost=2*(wa*a.takerBps+wb*b.takerBps)+wa*ia.bps+wb*ib.bps+2*slip;result.impact={a:ia,b:ib};}
+ // Expected move is to the take-profit exit (|z| - exitZ), not all the way to z = 0.
+ result.edgeToZero=Math.abs(s.z)*s.sd/(1+s.beta)*10000;
+ result.edge=Math.max(0,Math.abs(s.z)-Math.abs(o.exitZ))*s.sd/(1+s.beta)*10000;
  // Net funding carry over the half-life-based expected hold, on both legs, in bps of gross.
  const hold=Fd.expectedHoldMinutes(result.half,s.z,o.exitZ,o.maxHoldMinutes);
  result.funding=Fd.pairCarry(a,b,Math.sign(s.z)||1,s.beta,hold);
@@ -57,5 +85,5 @@ function analyze(pair,rows,E,now=Date.now(),slip,options={}){
  result.setup=result.eligible&&Math.abs(s.z)>=o.entryZMin&&Math.abs(s.z)<=o.entryZMax&&Number.isFinite(s.confirm)&&Math.abs(s.confirm)>=o.minConfirmZ&&s.z*s.confirm>0;
  return result;
 }
-root.PairScan={MIN_CONFIRM_Z,FUNDING_DEFAULTS,MODEL_DEFAULTS,groups,universe,pairs,analyze};if(typeof module!=='undefined')module.exports=root.PairScan;
+root.PairScan={MIN_CONFIRM_Z,FUNDING_DEFAULTS,MODEL_DEFAULTS,groups,universe,pairs,analyze,missingBars,legImpact};if(typeof module!=='undefined')module.exports=root.PairScan;
 })(typeof globalThis!=='undefined'?globalThis:this);

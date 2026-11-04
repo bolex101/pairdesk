@@ -44,7 +44,9 @@ function book(venue,id,data,quoteTime){
  const asks=b.asks.filter(l=>number(l[0])>0&&number(l[1])>0).map(l=>number(l[0]));
  const bid=Math.max(...bids),ask=Math.min(...asks),time=venue==='Ondo'?Date.parse(b.time):quoteTime;
  if(![bid,ask,time].every(Number.isFinite)||bid<=0||ask<bid)throw Error('Empty, crossed or untimed book');
- return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((ask+bid)/2)*10000,quoteTime:time};
+ const levels=side=>side.map(l=>[number(l[0]),number(l[1])]).filter(l=>l[0]>0&&l[1]>0);
+ // Ondo depth is requested 5 levels deep, so liquidity beyond it is unknown; Phoenix returns the full book.
+ return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((ask+bid)/2)*10000,quoteTime:time,book:{bids:levels(b.bids),asks:levels(b.asks),complete:venue!=='Ondo',source:venue}};
 }
 // Use the book's actual Solana block time; never relabel an old snapshot as fresh.
 async function blockTime(slot){

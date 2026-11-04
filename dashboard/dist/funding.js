@@ -3,9 +3,10 @@
    Positive = the leg PAYS funding, negative = the leg RECEIVES funding. */
 (function(root){
 const HOUR=3600;
-// Venues whose API reports a rate without a verified interval. null = unknown (funding flagged, never guessed).
+// Venues whose market API reports a rate without its interval. null = unknown (funding flagged, never guessed).
+// Arcus settles hourly (its funding-rate history is stamped on the hour); Ondo is hourly too.
 // Override with pairdesk-config.json "fundingIntervalSeconds": {"Arcus":3600}.
-const intervals={Arcus:null,Ondo:null,Popdex:null};
+const intervals={Arcus:3600,Ondo:3600,Popdex:null};
 function interval(venue){const v=intervals[venue];return Number.isFinite(v)&&v>0?v:null;}
 function setIntervals(o){for(const [k,v] of Object.entries(o||{}))intervals[k]=v===null?null:Number(v);}
 const num=v=>v===null||v===undefined||v===''?NaN:Number(v);

@@ -15,8 +15,10 @@ c=Fd.pairCarry({id:'A'},b,1,1,60);A.equal(c.known,false);A.deepEqual(c.missing,[
 A.equal(Fd.describe(null),'unknown');
 // Venue adapters.
 const arcus=F.normalize('Arcus',{markets:[{marketDisplayName:'NVDA-USD',category:'EQUITIES',status:'ONLINE',markPrice:'100',fundingRate:'0.0001',type:'PERPETUAL'}]})[0];
-A.equal(arcus.fundingHourly,null,'Arcus interval unverified unless configured');
-Fd.setIntervals({Arcus:3600});near(F.normalize('Arcus',{markets:[{marketDisplayName:'X',markPrice:'1',fundingRate:'0.0001'}]})[0].fundingHourly.long,0.0001);Fd.setIntervals({Arcus:null});
+near(arcus.fundingHourly.long,0.0001);A.equal(arcus.fundingSeconds,3600,'Arcus funding is hourly by default');
+Fd.setIntervals({Arcus:null});A.equal(F.normalize('Arcus',{markets:[{marketDisplayName:'X',markPrice:'1',fundingRate:'0.0001'}]})[0].fundingHourly,null,'config null still marks Arcus funding unknown');Fd.setIntervals({Arcus:3600});
+A.equal(Fd.interval('Ondo'),3600,'Ondo funding is hourly by default');A.equal(Fd.interval('Popdex'),null);
+Fd.setIntervals({Arcus:7200});near(F.normalize('Arcus',{markets:[{marketDisplayName:'X',markPrice:'1',fundingRate:'0.0001'}]})[0].fundingHourly.long,0.00005);Fd.setIntervals({Arcus:3600});
 const v=F.normalize('Variational',{listings:[{ticker:'NVDA-PERP',name:'NVIDIA Corporation',contract_type:'perpetual',mark_price:'1',funding:{last:{interval_rate:'0.0004'},next:{interval_rate:'0.0008'},interval_seconds:28800}},{ticker:'T-SWAP',name:'Gold',contract_type:'swap',mark_price:'1',funding:{next:{interval_long_rate:'0.0024',interval_short_rate:'0.0012'},interval_seconds:86400}},{ticker:'Z',name:'Gold',contract_type:'perpetual',mark_price:'1'}]});
 near(v[0].fundingHourly.long,0.0001);near(v[1].fundingHourly.long,0.0001);near(v[1].fundingHourly.short,-0.00005);A.equal(v[2].fundingHourly,null);
 const pop=F.normalize('Popdex',{code:'200',data:[{symbol:'NVDAUSDT',markPrice:'1',fundingRate:'0.0001'}]},{code:'200',data:[{symbol:'NVDAUSDT',assetClass:'Rwa',fundingInterval:'1',feeRates:[]},{symbol:'B',assetClass:'Rwa',feeRates:[]}]});
@@ -27,7 +29,7 @@ near(N.phoenixEightHourFraction({eight_hour_funding_rate:0.0283772463881}),0.000
 const btc=N.listPhoenix({exchange:{active:true},markets:[{symbol:'BTC',marketStatus:'active',takerFee:0.00035}]},{markets:[{symbol:'BTC',mark_price:77187,eight_hour_funding_rate:0.0283772463881,annualized_funding_rate:31.0730847949}]})[0];
 near(btc.fundingHourly.long*24*365*100,31.0730847949,1e-6);A.ok(btc.fundingHourly.long*24*365<1,'Phoenix BTC funding must be a sane fraction');
 A.equal(N.listPhoenix({exchange:{active:true},markets:[{symbol:'X',marketStatus:'active'}]},{markets:[{symbol:'X'}]})[0].fundingHourly,null);
-const ondo=N.listOndo({success:true,result:[{productType:'perpetual',contractType:'linear',market:'NVDA-USD.P',tags:['Stock'],bid:'1',ask:'1',fundingRate:'0.0001',takerFee:'0.0005',isClosed:false}]})[0];A.equal(ondo.fundingHourly,null);
+const ondo=N.listOndo({success:true,result:[{productType:'perpetual',contractType:'linear',market:'NVDA-USD.P',tags:['Stock'],bid:'1',ask:'1',fundingRate:'0.0001',takerFee:'0.0005',isClosed:false}]})[0];near(ondo.fundingHourly.long,0.0001,1e-12);
 // Scan analysis: funding raises the bar when the pair pays, income credit is capped at half the friction.
 const now=1800000000000,bar=300000,rows=Array.from({length:240},(_,i)=>({t:now-(240-i)*bar,a:Math.exp(4+i*.001+.01*Math.sin(i*.4)),b:Math.exp(4+i*.001)}));
 const q={id:'A',type:'PERPETUAL',status:'ONLINE',price:100,bid:99.99,ask:100.01,spread:2,takerBps:2,volume:1e7,quoteTime:now,requireQuote:true};

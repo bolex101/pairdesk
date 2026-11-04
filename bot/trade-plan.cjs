@@ -23,7 +23,7 @@ function build(p,venue,now=Date.now(),input={}){
  const fundingBps=f.known&&Number.isFinite(f.bps)?f.bps:0,fundingCost=c.gross*fundingBps/10000;
  const effectiveCost=Number.isFinite(p.totalCost)?p.totalCost:p.cost;
  const targetGross=c.gross*(magnitude-c.exitZ)*p.sd/(1+p.beta);
- if(magnitude*p.sd/(1+p.beta)*10000<2*effectiveCost||targetGross<=cost+Math.max(fundingCost,0))return reject('Current move no longer covers the cost filter and take-profit costs');
+ if((magnitude-c.exitZ)*p.sd/(1+p.beta)*10000<2*effectiveCost||targetGross<=cost+Math.max(fundingCost,0))return reject('Current move no longer covers the cost filter and take-profit costs');
  const aNotional=c.gross/(1+p.beta),bNotional=c.gross-aNotional;
  const entryA=direction>0?p.a.bid:p.a.ask,entryB=direction>0?p.b.ask:p.b.bid;
  const ratio=level=>Math.exp(p.alpha+level*p.sd);

@@ -21,7 +21,7 @@ function message(a){
  '• Score: '+n(p.score,0)+'/100 (not a win probability)',
  '• Signal z: '+n(p.z)+'; 15m z: '+n(p.confirm),
  '• Correlation: '+n(p.corr)+'; estimated half-life: '+n(p.half)+' min',
- '• Full-reversion move / estimated round-trip friction: '+n(p.edge)+' / '+n(p.cost)+' bps',
+ '• Move to take-profit / estimated round-trip friction: '+n(p.edge)+' / '+n(p.cost)+' bps',
  '• Hedge beta: '+n(q.beta,8)+' (B notional / A notional)',
  '• Indicative entry references: '+q.a.id+' ~'+n(q.a.entry,6)+'; '+q.b.id+' ~'+n(q.b.entry,6),
  '• Live midpoint z: '+n(q.z)+'; entry window expires '+new Date(q.expiresAt).toISOString(),

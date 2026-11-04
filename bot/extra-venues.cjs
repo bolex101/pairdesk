@@ -57,7 +57,8 @@ function quoteBook(bids,asks,time,now=Date.now()){
  const side=levels=>levels.map(l=>{if(!Array.isArray(l)||l.length<2||!Number.isFinite(n(l[0]))||n(l[0])<=0||!Number.isFinite(n(l[1]))||n(l[1])<0)throw Error('Malformed book level');return l;}).filter(l=>n(l[1])>0).map(l=>n(l[0]));
  const bid=Math.max(...side(bids)),ask=Math.min(...side(asks));
  if(!Number.isFinite(bid)||!Number.isFinite(ask)||ask<bid||!Number.isSafeInteger(time)||time<=0||now-time>120000||time>now+5000)throw Error('Empty, crossed or stale/untimed book');
- return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((bid+ask)/2)*10000,quoteTime:time};
+ const lv=side=>side.map(l=>[n(l[0]),n(l[1])]).filter(l=>l[1]>0);
+ return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((bid+ask)/2)*10000,quoteTime:time,book:{bids:lv(bids),asks:lv(asks),complete:true}};
 }
 function qBook(id,b,now=Date.now()){if(b?.ticker_id!==id)throw Error('QFEX book identity mismatch');return quoteBook(b.bids,b.asks,b.timestamp,now);}
 function riseBook(id,m,now=Date.now()){

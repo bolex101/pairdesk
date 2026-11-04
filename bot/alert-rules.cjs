@@ -36,7 +36,7 @@ function message(a){
   '• 15m z: '+number(p.confirm),
   '• Correlation: '+number(p.corr),
   '• Estimated half-life: '+number(p.half)+' min',
-  '• Full-reversion move: '+number(p.edge)+' bps',
+  '• Move to take-profit: '+number(p.edge)+' bps',
   '• Round-trip friction: '+number(p.cost)+' bps',
   '• Expected funding: '+Fd.describe(p.funding),
   '• Price history: '+(p.a.historySource||'Exchange candles'),

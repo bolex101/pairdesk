@@ -15,7 +15,13 @@ const DEFAULTS=Object.freeze({
  fundingIncomeCreditMax:0.5,requireKnownFunding:false,
  liquidationAlertPct:15,hedgeDriftAlertPct:10,
  heartbeatStaleMinutes:30,
- fundingIntervalSeconds:Object.freeze({Arcus:null,Ondo:null,Popdex:null})
+ maxMissingBars:2,           // missing 5-minute bars allowed in the 240-bar window, counted by DURATION (a weekend = hundreds)
+ depthPenaltyBps:10,         // full order book exhausted before the leg is filled: extra bps on the unfilled share, per side
+ unknownDepthBps:2,          // only top-of-book size published (Arcus, Popdex): extra bps on the share beyond it, per side
+ popdexThinBookPenaltyBps:5, // additional Popdex thin-book penalty on that same share, per side
+ excludePopdexOvernight:false, // optional: skip Popdex OVERNIGHT session (off by default)
+ // Arcus: hourly, verified from api.arcus.xyz/v1/fundingRates (rates stamped on the hour). Ondo: hourly per audit.
+ fundingIntervalSeconds:Object.freeze({Arcus:3600,Ondo:3600,Popdex:null})
 });
 let current={...DEFAULTS};
 const num=(k,lo,hi)=>v=>typeof v==='number'&&Number.isFinite(v)&&v>=lo&&v<=hi||k+' must be a number between '+lo+' and '+hi;
@@ -25,6 +31,9 @@ const RULES={minAlertScore:num('minAlertScore',0,100),minConfirmZ:num('minConfir
  minHalfLife:num('minHalfLife',0,10000),maxHalfLife:num('maxHalfLife',0,10000),minCorrelation:num('minCorrelation',-1,1),minHalfCorrelation:num('minHalfCorrelation',-1,1),
  maxQuoteAgeMs:num('maxQuoteAgeMs',1000,3600000),fundingIncomeCreditMax:num('fundingIncomeCreditMax',0,1),requireKnownFunding:v=>typeof v==='boolean'||'requireKnownFunding must be true/false',
  liquidationAlertPct:num('liquidationAlertPct',0.1,99),hedgeDriftAlertPct:num('hedgeDriftAlertPct',0.1,99),heartbeatStaleMinutes:num('heartbeatStaleMinutes',1,1440),
+ maxMissingBars:v=>Number.isInteger(v)&&v>=0&&v<=240||'maxMissingBars must be an integer 0-240',
+ depthPenaltyBps:num('depthPenaltyBps',0,1000),unknownDepthBps:num('unknownDepthBps',0,1000),popdexThinBookPenaltyBps:num('popdexThinBookPenaltyBps',0,1000),
+ excludePopdexOvernight:v=>typeof v==='boolean'||'excludePopdexOvernight must be true/false',
  fundingIntervalSeconds:v=>v&&typeof v==='object'&&Object.entries(v).every(([k,s])=>typeof k==='string'&&(s===null||Number.isFinite(s)&&s>0&&s<=86400*7))||'fundingIntervalSeconds must map venue to seconds or null'};
 function validate(o){
  if(!o||typeof o!=='object'||Array.isArray(o))throw Error('Thresholds must be an object');

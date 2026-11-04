@@ -19,9 +19,14 @@
   "liquidationAlertPct": 15,
   "hedgeDriftAlertPct": 10,
   "heartbeatStaleMinutes": 30,
+  "maxMissingBars": 2,
+  "depthPenaltyBps": 10,
+  "unknownDepthBps": 2,
+  "popdexThinBookPenaltyBps": 5,
+  "excludePopdexOvernight": false,
   "fundingIntervalSeconds": {
-   "Arcus": null,
-   "Ondo": null,
+   "Arcus": 3600,
+   "Ondo": 3600,
    "Popdex": null
   }
  }
