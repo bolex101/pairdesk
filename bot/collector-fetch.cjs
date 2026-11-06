@@ -1,3 +1,4 @@
+const Log=require('./log.cjs');
 const D=require('./data.cjs');
 const ATTEMPTS=3,TIMEOUT=8000,BUDGET=35000;
 function failure(message,retry=false,delay=null){const e=new Error(message);e.safeMessage=message;e.retry=retry;e.delay=delay;return e;}
@@ -21,7 +22,7 @@ async function markets({fetchImpl=fetch,sleep=ms=>new Promise(r=>setTimeout(r,ms
    log('Variational retry in '+(delay/1000).toFixed(1)+' seconds');await sleep(delay);continue;
   }
   let result;
-  try{result=D.variationalMarkets(data);}catch{throw failure('response schema invalid; expected usable Variational listings');}
+  try{result=D.variationalMarkets(data);}catch(e){Log.warn('Variational schema check',e);throw failure('response schema invalid; expected usable Variational listings');}
   if(!result.length||!result.some(r=>r.tradfi&&Number.isFinite(r.price)&&r.price>0))throw failure('response contains no usable TradFi marks');
   if(attempt>1)log('Variational fetch recovered on attempt '+attempt+'/'+ATTEMPTS);
   return result;

@@ -1,4 +1,5 @@
-const D=require('./data.cjs');
+const Log=require('./log.cjs');
+const D=require('./data.cjs'),Risk=require('./risk.cjs'),Sol=require('./solana.cjs');
 const BASE='https://perp-api.phoenix.trade';
 const num=v=>(typeof v==='number'||typeof v==='string'&&v.trim())?Number(v):NaN;
 const near=(a,b)=>Number.isFinite(a)&&Number.isFinite(b)&&Math.abs(a-b)<=Math.max(1e-9,Math.abs(b)*1e-8);
@@ -15,7 +16,7 @@ function parse(data,markets,address,index,subaccounts,at,now=Date.now()){
    if(!m||!Number.isInteger(m.baseLotsDecimals)||m.baseLotsDecimals<0||m.baseLotsDecimals>12)throw Error('Missing Phoenix lot conversion');
    const quantity=Math.abs(lots)/10**m.baseLotsDecimals,price=num(p.entryPriceUsd);
    if(!(price>0)||!Number.isFinite(price*quantity)||p.basePositionUnits!==undefined&&!near(num(p.basePositionUnits),lots/10**m.baseLotsDecimals))throw Error('Invalid Phoenix price or units');
-   return [{symbol:p.symbol,side:lots>0?'LONG':'SHORT',quantity,price,enteredAt:null,generation:null}];
+   return [Risk.withLiquidation({symbol:p.symbol,side:lots>0?'LONG':'SHORT',quantity,price,enteredAt:null,generation:null},p)];
   });
   if(new Set(rows.map(r=>r.symbol)).size!==rows.length)throw Error('Duplicate Phoenix position');
   return {account:'Phoenix:'+index+':'+sub,venue:'Phoenix',address,index,subaccountIndex:sub,at,revision:String(data.slot),ok:true,rows};
@@ -45,10 +46,7 @@ function withHistory(accounts,data,now=Date.now()){
  return accounts;
 }
 async function blockTime(slot){
- const r=await fetch('https://api.mainnet-beta.solana.com',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'getBlockTime',params:[slot]}),signal:AbortSignal.timeout(8000)});
- if(!r.ok)throw Error('Phoenix snapshot time unavailable');
- const d=await r.json();if(d.error||!Number.isSafeInteger(d.result)||d.result<=0)throw Error('Phoenix snapshot time unavailable');
- return d.result*1000;
+ try{return await Sol.blockTime(slot);}catch(e){throw Error('Phoenix snapshot time unavailable',{cause:e});}
 }
 async function fetchAccounts(config){
  const {address,index=0,subaccounts=[0]}=config;
@@ -77,6 +75,6 @@ async function fetchAccounts(config){
    }
   }
   return accounts;
- }catch{console.warn('Phoenix wallet check unavailable: '+stage+'. Freshness checks remain enforced; no closure inferred.');return unavailable();}
+ }catch(e){console.warn('Phoenix wallet check unavailable: '+stage+' ('+Log.safe(e)+'). Freshness checks remain enforced; no closure inferred.');return unavailable();}
 }
 module.exports={parse,withHistory,fetchAccounts};

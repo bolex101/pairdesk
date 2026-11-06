@@ -1,4 +1,5 @@
 'use strict';
+const Log=require('./log.cjs');
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),H=require('./linked-history.cjs');
 function fingerprint(key){return crypto.createHash('sha256').update(key.publicKey).digest('hex');}
 function validateKey(k){
@@ -11,7 +12,7 @@ function auth(key,now=Date.now(),nonce=crypto.randomBytes(16).toString('hex')){
 async function get(key,route){
  if(!/^\/user\/(positions|trade)(\?|$)/.test(route))throw Error('QFEX read endpoint only');
  const a=auth(key);let r;
- try{r=await fetch('https://api.qfex.com'+route,{headers:{'x-qfex-public-key':a.public_key,'x-qfex-nonce':a.nonce,'x-qfex-timestamp':String(a.unix_ts),'x-qfex-hmac-signature':a.signature},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});}catch{throw Error('QFEX account connection unavailable');}
+ try{r=await fetch('https://api.qfex.com'+route,{headers:{'x-qfex-public-key':a.public_key,'x-qfex-nonce':a.nonce,'x-qfex-timestamp':String(a.unix_ts),'x-qfex-hmac-signature':a.signature},redirect:'error',cache:'no-store',signal:AbortSignal.timeout(8000)});}catch(e){throw Error('QFEX account connection unavailable',{cause:e});}
  if(!r.ok)throw Error('QFEX account HTTP '+r.status+'; verify primary-account key scope and view permissions');
  const date=Date.parse(r.headers.get('date'));if(!Number.isFinite(date)||Math.abs(Date.now()-date)>120000)throw Error('QFEX response time unverified');
  return r.json();
@@ -44,11 +45,11 @@ function executions(key){
  validateKey(key);
  return new Promise((resolve,reject)=>{
  let ws,done=false,authed=false,offset=0,stage='connecting',messages=0;const rows=[],seen=new Set();
- const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch{}err?reject(err):resolve(rows);};
+ const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch(e){Log.debug('QFEX socket close',e);}err?reject(err):resolve(rows);};
  const timer=setTimeout(()=>finish(Error('QFEX executed-history timeout; stage='+stage+'; page='+String(offset/1000+1)+'; messages='+messages)),20000);
- try{ws=new WebSocket('wss://trade.qfex.com?api_key='+encodeURIComponent(key.publicKey));}catch{finish(Error('QFEX executed-history connection unavailable'));return;}
+ try{ws=new WebSocket('wss://trade.qfex.com?api_key='+encodeURIComponent(key.publicKey));}catch(e){finish(Error('QFEX executed-history connection unavailable',{cause:e}));return;}
  const request=()=>{stage='waiting for history';ws.send(JSON.stringify({type:'get_user_trades',params:{limit:1000,offset}}));};
- ws.onopen=()=>{try{stage='waiting for authentication';ws.send(JSON.stringify({type:'auth',params:{hmac:auth(key)}}));}catch{finish(Error('QFEX authentication request failed'));}};
+ ws.onopen=()=>{try{stage='waiting for authentication';ws.send(JSON.stringify({type:'auth',params:{hmac:auth(key)}}));}catch(e){finish(Error('QFEX authentication request failed',{cause:e}));}};
  ws.onerror=()=>finish(Error('QFEX executed-history connection failed; stage='+stage));
  ws.onclose=()=>finish(Error('QFEX executed-history disconnected; stage='+stage));
  ws.onmessage=e=>{

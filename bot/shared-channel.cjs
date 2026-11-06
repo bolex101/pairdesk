@@ -1,3 +1,4 @@
+const Identity=require('./identity.cjs'),Plan=require('./trade-plan.cjs');
 const fs=require('node:fs'),path=require('node:path'),Telegram=require('./telegram.cjs');
 function target(value){
  const text=String(value||'').trim(),match=/^https:\/\/t\.me\/c\/(\d+)\/\d+(?:\?.*)?$/.exec(text);
@@ -15,11 +16,12 @@ function message(a){
  // Explicit public-field allowlist: never serialize account state, user text or full plans.
  return [
  'PAIRDESK — SHARED RESEARCH SETUP',a.venue+' · '+q.a.id+' / '+q.b.id,'',
- '• Direction: '+q.a.side+' '+q.a.id+' / '+q.b.side+' '+q.b.id,
+ ...Plan.actionLines(q),'',
+ '• Direction: '+Plan.sideLabel(q.a.side)+' '+q.a.id+' / '+Plan.sideLabel(q.b.side)+' '+q.b.id,
  '• Score: '+n(p.score,0)+'/100 (not a win probability)',
  '• Signal z: '+n(p.z)+'; 15m z: '+n(p.confirm),
  '• Correlation: '+n(p.corr)+'; estimated half-life: '+n(p.half)+' min',
- '• Full-reversion move / estimated round-trip friction: '+n(p.edge)+' / '+n(p.cost)+' bps',
+ '• Move to take-profit / estimated round-trip friction: '+n(p.edge)+' / '+n(p.cost)+' bps',
  '• Hedge beta: '+n(q.beta,8)+' (B notional / A notional)',
  '• Indicative entry references: '+q.a.id+' ~'+n(q.a.entry,6)+'; '+q.b.id+' ~'+n(q.b.entry,6),
  '• Live midpoint z: '+n(q.z)+'; entry window expires '+new Date(q.expiresAt).toISOString(),
@@ -33,7 +35,8 @@ function message(a){
  '• Channel posts do not monitor positions. Approved friends can register privately with the bot for notifications. No orders or stops are placed.'
  ].join('\n');
 }
-function config(file=path.join(__dirname,'channel-config.json')){
+// PAIRDESK_CHANNEL_CONFIG lets a test run point at its own (normally absent) channel file.
+function config(file=process.env.PAIRDESK_CHANNEL_CONFIG||path.join(__dirname,'channel-config.json')){
  if(!fs.existsSync(file))return {enabled:false};
  const c=JSON.parse(fs.readFileSync(file,'utf8'));
  if(c.enabled!==true)return {enabled:false};
@@ -46,7 +49,7 @@ async function send(a,c,api,signalId){
  const chat=await api('getChat',{chat_id:c.chatId});
  if(checkChat(chat)!==String(c.chatId))throw Error('Channel identity changed');
  if(text.length>4000)throw Error('Shared alert too long');
- await api('sendMessage',{chat_id:c.chatId,text,...(/^[a-f0-9]{12}$/.test(signalId||'')?{reply_markup:{inline_keyboard:[[{text:'Register my trade — private',url:'https://t.me/pairdeskbot?start=trade_'+signalId}]]}}:{})});
+ await api('sendMessage',{chat_id:c.chatId,text,...(/^[a-f0-9]{12}$/.test(signalId||'')?{reply_markup:{inline_keyboard:[[{text:'Register my trade — private',url:'https://t.me/'+Identity.username()+'?start=trade_'+signalId}]]}}:{})});
  return true;
 }
 async function deliver(a,signalId,dir){

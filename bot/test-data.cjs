@@ -19,7 +19,7 @@ const short=D.record({markets:{}},[v],now+10000);
 assert.equal(D.sampledHistory(short,v.id,now+bar+2000).length,0); // early-only observation discarded
 const restart=JSON.parse(JSON.stringify(store));assert.deepEqual(D.sampledHistory(restart,v.id,now+bar+2000),D.sampledHistory(store,v.id,now+bar+2000));
 const rows=Array.from({length:240},(_,i)=>({t:now-(240-i)*bar,a:Math.exp(4+i*.001+.01*Math.sin(i*.4)),b:Math.exp(4+i*.001)}));
-const engine={stats:()=>({beta:1,sd:.01,z:2,confirm:2}),fit:()=>({alpha:0,beta:1}),corr:()=>.8};
+const engine={stats:()=>({beta:1,alpha:0,sd:.01,z:2,confirm:2}),fit:()=>({alpha:0,beta:1}),corr:()=>.8};
 const pair={a:q,b:{...q,id:'B'},group:'semiconductors'};
 assert.equal(S.analyze(pair,rows,engine,now).setup,true);
 for(const bad of [{quoteTime:now-121000},{quoteTime:now+6000},{quoteTime:null},{bid:null},{spread:null}])assert.equal(S.analyze({...pair,a:{...q,...bad}},rows,engine,now).eligible,false);

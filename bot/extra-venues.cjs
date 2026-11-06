@@ -1,11 +1,12 @@
 'use strict';
-const D=require('./data.cjs');
+const Log=require('./log.cjs');
+const D=require('./data.cjs'),Fd=require('./funding.js');
 const names=['QFEX','RISEx'],Q='https://api.qfex.com',R='https://api.rise.trade',BAR=300000;
 const n=v=>v===null||v===undefined||v===''?NaN:Number(v);
 function parts(now,tz){return Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:tz,weekday:'long',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now).map(x=>[x.type,x.value]));}
 function qSession(hours,now){
  try{const p=parts(now,hours.tz),clock=p.hour+':'+p.minute+':'+p.second;
- return (hours[p.weekday.toLowerCase()]||[]).some(s=>s.session==='open'&&clock>=s.open&&clock<s.close);}catch{return false;}
+ return (hours[p.weekday.toLowerCase()]||[]).some(s=>s.session==='open'&&clock>=s.open&&clock<s.close);}catch(e){Log.debug('QFEX market-hours parse',e);return false;}
 }
 // Conservative research window for the supported US stocks, ETFs and commodities.
 // This is a Pairdesk policy, not a claim that RISEx closes outside these hours.
@@ -21,7 +22,7 @@ function listQfex(contracts,ref,now=Date.now()){
  return contracts.data.filter(c=>c.product_type==='Perpetual'&&c.target_currency==='USD').flatMap(c=>{
  const m=by.get(c.ticker_id);if(!m||m.quote_asset!=='USD'||m.base_asset!==c.base_currency)return [];
  const fee={EQUITY:10,INDEX:5,COMMODITY:5}[m.product_category];if(fee===undefined)return [];
- return [baseRow(m.symbol,m.base_asset,c.last_price,c.target_volume,fee,m.status==='ACTIVE'?'Trading':'Unavailable',!qSession(m.market_hours,now),'QFEX exchange candles')];
+ return [{...baseRow(m.symbol,m.base_asset,c.last_price,c.target_volume,fee,m.status==='ACTIVE'?'Trading':'Unavailable',!qSession(m.market_hours,now),'QFEX exchange candles'),funding:n(c.funding_rate),fundingHourly:Fd.perp(c.funding_rate,n(c.funding_interval_minutes)*60,'QFEX funding_rate per funding_interval_minutes')}];
  });
 }
 function listRise(data,now=Date.now()){
@@ -33,7 +34,7 @@ function listRise(data,now=Date.now()){
  // Canonical display ID avoids a slash being mistaken for a pair separator.
  const symbol=m.config.name.split('/')[0],row=baseRow(symbol+'-USDC',symbol,m.mark_price,m.quote_volume_24h,3,
  m.active===true&&m.reduce_only===false&&m.post_only===false&&m.config.unlocked===true?'Trading':'Unavailable',!riseSession(now),'RISEx exchange OHLCV');
- return {...row,marketId:m.market_id};
+ return {...row,marketId:m.market_id,funding:n(m.funding_rate_8h),fundingHourly:Fd.perp(m.funding_rate_8h,8*3600,'RISEx 8h funding rate')};
  });
 }
 let riseCache,cacheAt=0,risePending;
@@ -56,7 +57,8 @@ function quoteBook(bids,asks,time,now=Date.now()){
  const side=levels=>levels.map(l=>{if(!Array.isArray(l)||l.length<2||!Number.isFinite(n(l[0]))||n(l[0])<=0||!Number.isFinite(n(l[1]))||n(l[1])<0)throw Error('Malformed book level');return l;}).filter(l=>n(l[1])>0).map(l=>n(l[0]));
  const bid=Math.max(...side(bids)),ask=Math.min(...side(asks));
  if(!Number.isFinite(bid)||!Number.isFinite(ask)||ask<bid||!Number.isSafeInteger(time)||time<=0||now-time>120000||time>now+5000)throw Error('Empty, crossed or stale/untimed book');
- return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((bid+ask)/2)*10000,quoteTime:time};
+ const lv=side=>side.map(l=>[n(l[0]),n(l[1])]).filter(l=>l[1]>0);
+ return {bid,ask,price:(bid+ask)/2,spread:(ask-bid)/((bid+ask)/2)*10000,quoteTime:time,book:{bids:lv(bids),asks:lv(asks),complete:true}};
 }
 function qBook(id,b,now=Date.now()){if(b?.ticker_id!==id)throw Error('QFEX book identity mismatch');return quoteBook(b.bids,b.asks,b.timestamp,now);}
 function riseBook(id,m,now=Date.now()){
@@ -68,16 +70,16 @@ function riseBook(id,m,now=Date.now()){
 function riseSnapshots(ids){
  return new Promise((resolve,reject)=>{
  let ws,done=false;const wanted=new Set(ids),out=new Map();
- const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch{}err?reject(err):resolve(out);};
+ const finish=err=>{if(done)return;done=true;clearTimeout(timer);try{ws?.close();}catch(e){Log.debug('RISEx socket close',e);}err?reject(err):resolve(out);};
  const timer=setTimeout(()=>finish(),10000);
- try{ws=new WebSocket('wss://ws.rise.trade/ws');}catch{finish(Error('RISEx WebSocket unavailable; Node 24 required'));return;}
- ws.onopen=()=>{try{ws.send(JSON.stringify({method:'subscribe',params:{channel:'orderbook',market_ids:ids.map(Number)}}));}catch{finish(Error('RISEx quote subscription failed'));}};
+ try{ws=new WebSocket('wss://ws.rise.trade/ws');}catch(e){finish(Error('RISEx WebSocket unavailable; Node 24 required',{cause:e}));return;}
+ ws.onopen=()=>{try{ws.send(JSON.stringify({method:'subscribe',params:{channel:'orderbook',market_ids:ids.map(Number)}}));}catch(e){finish(Error('RISEx quote subscription failed',{cause:e}));}};
  ws.onerror=()=>finish(Error('RISEx quote connection failed'));
  ws.onclose=()=>finish(Error('RISEx quote connection closed before snapshots'));
  ws.onmessage=e=>{try{const m=JSON.parse(e.data);if(m.channel==='orderbook'&&m.type==='snapshot'){
  const id=String(m.market_id);if(!wanted.has(id))throw Error('Unexpected market');
  out.set(id,riseBook(id,m));if(out.size===wanted.size)finish();
- }}catch{finish(Error('RISEx quote snapshot rejected'));}};
+ }}catch(e){finish(Error('RISEx quote snapshot rejected',{cause:e}));}};
  });
 }
 async function quoteMany(venue,ids){

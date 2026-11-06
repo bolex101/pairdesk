@@ -1,4 +1,5 @@
-const fs=require('node:fs'),path=require('node:path');
+const Log=require('./log.cjs'),AlertLog=require('./alert-log.cjs');
+const Config=require('./config.cjs'),fs=require('node:fs'),path=require('node:path');
 const F=require('./feeds.js'),S=require('./scan-engine.js'),E=require('./engine.js'),A=require('./alert-rules.cjs'),D=require('./data.cjs'),Plan=require('./trade-plan.cjs'),Store=require('./storage.cjs'),Buttons=require('./buttons.cjs'),Performance=require('./performance.cjs'),N=require('./new-venues.cjs');
 const planSettings=Plan.settings(JSON.parse(fs.readFileSync(path.join(__dirname,'plan-config.json'),'utf8')));
 const dir=process.env.PAIRDESK_STATE_DIR||path.join(__dirname,'state'),send=process.argv.includes('--send');
@@ -20,9 +21,19 @@ async function telegram(text,replyMarkup){
  const token=process.env.TELEGRAM_BOT_TOKEN,chat=process.env.TELEGRAM_CHAT_ID;
  if(!token||!chat)throw Error('Telegram is not configured');
  try{const r=await fetch('https://api.telegram.org/bot'+token+'/sendMessage',{method:'POST',redirect:'error',signal:AbortSignal.timeout(20000),headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chat,text,reply_markup:replyMarkup})});if(!r.ok||!(await r.json()).ok)throw Error();}
- catch{throw Error('Telegram delivery failed or could not be confirmed');}
+ catch(e){throw Error('Telegram delivery failed or could not be confirmed',{cause:Error(Log.safe(e))});}
 }
-const Shared=require('./shared-channel.cjs');
+const Shared=require('./shared-channel.cjs'),Heartbeat=require('./heartbeat.cjs');
+// Dead-man check on the monitor (delivery runs only with --send). State kept in heartbeat.json.
+async function watchMonitor(){
+ const file=path.join(dir,'heartbeat.json'),limit=Config.get().heartbeatStaleMinutes,last=Heartbeat.monitorLastCycle(dir),now=Date.now();
+ let hb={};try{hb=JSON.parse(fs.readFileSync(file,'utf8'));}catch(e){if(e.code!=='ENOENT')console.error('Heartbeat state unreadable; starting fresh');}
+ const r=Heartbeat.evaluate(hb.monitor,last,now,limit);
+ if(!r.event)return;
+ if(!send){console.log('Heartbeat (dry run): monitor '+r.event);return;}
+ hb.monitor=r.entry;Store.save(file,hb);
+ try{await telegram(Heartbeat.message('monitor',r,last,limit));}catch(e){console.error('Heartbeat alert delivery unconfirmed: '+e.message);}
+}
 const pause=()=>new Promise(r=>setTimeout(r,350));
 (async()=>{
  let failures=0;const reports=[];
@@ -36,20 +47,20 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
    }
    for(const r of universe){
     try{histories.set(r.id,['Variational','Ondo'].includes(venue)?D.sampledHistory(store,r.id,Date.now()):await history(venue,r.id));}
-    catch{console.log(venue+' '+r.id+': history unavailable');}
+    catch(e){console.log(venue+' '+r.id+': history unavailable ('+Log.safe(e)+')');}
     if(!['Variational','Ondo'].includes(venue))await pause();
    }
    const fresh=new Map((await markets(venue)).map(r=>[r.id,r]));
    if(venue==='Arcus')for(const r of universe){
     if(!fresh.has(r.id))continue;
     try{fresh.set(r.id,D.arcusQuote(fresh.get(r.id),await D.get('https://api.arcus.xyz/v1/bbo/'+encodeURIComponent(r.id))));}
-    catch{fresh.set(r.id,D.arcusQuote(fresh.get(r.id),{}));console.log('Arcus '+r.id+': quote unavailable');}
+    catch(e){fresh.set(r.id,D.arcusQuote(fresh.get(r.id),{}));console.log('Arcus '+r.id+': quote unavailable ('+Log.safe(e)+')');}
     await pause();
    }
    if(N.names.includes(venue))for(const m of await N.enrich(venue,universe.map(r=>fresh.get(r.id)).filter(Boolean)))fresh.set(m.id,m);
    const results=S.pairs(universe.map(r=>fresh.get(r.id)).filter(Boolean))
     .filter(p=>histories.has(p.a.id)&&histories.has(p.b.id))
-    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E));
+    .map(p=>S.analyze(p,F.align(histories.get(p.a.id),histories.get(p.b.id)),E,Date.now(),undefined,{exitZ:planSettings.exitZ,maxHoldMinutes:planSettings.maxHoldMinutes,gross:planSettings.gross}));
    // Data outages and warm-up are not observed signal exits; preserve alert deduplication state.
    const observable=results.filter(p=>!p.reasons.some(r=>/Fewer than|older than|Quote older|Fresh two-sided|Incomplete or future|Too many gaps|Execution cost incomplete/.test(r)));
    const planned=observable.map(p=>({...p,plan:Plan.build(p,venue,Date.now(),planSettings)}));
@@ -69,16 +80,18 @@ const pause=()=>new Promise(r=>setTimeout(r,350));
      // Persist before delivery to suppress duplicates following an ambiguous network timeout.
      state[a.key].sentAt=Date.now();save();
      let signalId;
-     try{signalId=Store.signal(dir,a.plan);await telegram(A.message(a)+'\n\nSignal ID: '+signalId+'\nAfter filling BOTH legs, tap Register trade below (or use /open '+signalId+').',Buttons.keyboard(signalId,a.venue));Performance.receipt(dir,signalId,a.plan);console.log('Alert delivered: '+a.key);}
-     catch{failures++;console.error('Alert delivery unconfirmed: '+a.key+'; suppressed until setup re-arms and cooldown expires');}
+     try{signalId=Store.signal(dir,a.plan);await telegram(A.message(a)+'\n\nSignal ID: '+signalId+'\nAfter filling BOTH legs, tap Register trade below (or use /open '+signalId+').',Buttons.keyboard(signalId,a.venue));Performance.receipt(dir,signalId,a.plan);console.log('Alert delivered: '+a.key+' score '+a.pair.score);
+      try{AlertLog.append(dir,a,signalId);}catch(e){console.error('Alert log append failed (alert was delivered): '+Log.safe(e));}}
+     catch(e){failures++;console.error('Alert delivery unconfirmed: '+a.key+'; suppressed until setup re-arms and cooldown expires ('+Log.safe(e)+')');}
      if(signalId)try{if(await Shared.deliver(a,signalId,dir))console.log('Shared research alert delivered: '+a.key);}
-     catch{failures++;console.error('Shared channel delivery unconfirmed: '+a.key+'; private monitoring unchanged; no automatic retry of expired signals');}
+     catch(e){failures++;console.error('Shared channel delivery unconfirmed: '+a.key+'; private monitoring unchanged; no automatic retry of expired signals ('+Log.safe(e)+')');}
 
     }
    }
-  }catch{failures++;console.error(venue+': scan failed; previous alert history preserved');}
+  }catch(e){failures++;console.error(venue+': scan failed; previous alert history preserved ('+Log.safe(e)+')');}
  }
+ try{await watchMonitor();}catch(e){console.error('Heartbeat check failed: '+e.message);}
  const status={version:7,finishedAt:new Date().toISOString(),failures,deliveryEnabled:send,reports};
  fs.writeFileSync(path.join(dir,'status.json'),JSON.stringify(status,null,2),{mode:0o600});
  if(failures)process.exitCode=1;
-})().catch(()=>{console.error('Scanner stopped; inspect configuration and state permissions');process.exitCode=1;});
+})().catch(e=>{console.error('Scanner stopped; inspect configuration and state permissions ('+Log.safe(e)+')');process.exitCode=1;});
