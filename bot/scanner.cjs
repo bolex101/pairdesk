@@ -14,7 +14,7 @@ async function markets(v){
   const [d,c]=await Promise.all([D.get(pop+'market/tickers?category=FUTURES&limit=100'),D.get(pop+'config/symbols')]);
   if(Number(d.total)>d.data.length)throw Error('Incomplete market coverage');return F.normalize(v,d,c);
  }
- return v==='Arcus'?F.normalize(v,await D.get('https://api.arcus.xyz/v1/markets')):D.variationalMarkets(await D.get(D.VAR_URL));
+ return v==='Arcus'?F.normalize(v,await D.get('https://api.arcus.xyz/v1/markets')):D.variationalMarkets(await D.getVariational());
 }
 async function history(v,id){if(N.names.includes(v))return N.history(v,id);return F.candles(v,await D.get(v==='Popdex'?pop+'public/market/candles?'+new URLSearchParams({category:'FUTURES',symbol:id,interval:'5m',limit:'1000'}):'https://api.arcus.xyz/v1/candles?'+new URLSearchParams({market:id,timeframe:'5m',to:String(Date.now()*1000),countback:'1500'})));}
 async function telegram(text,replyMarkup){

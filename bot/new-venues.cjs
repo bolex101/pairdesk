@@ -34,7 +34,7 @@ function listPhoenix(config,stats){
 async function markets(venue){
  if(X.names.includes(venue))return X.markets(venue);
  if(venue==='Ondo')return listOndo(await D.get(ONDO+'/v1/perps/contracts'));
- if(venue==='Phoenix'){const [config,stats]=await Promise.all([D.get(PHOENIX+'/v1/exchange/snapshot'),D.get(PHOENIX+'/v1/markets/stats/latest')]);return listPhoenix(config,stats);}
+ if(venue==='Phoenix'){const [config,stats]=await Promise.all([D.getRetry(PHOENIX+'/v1/exchange/snapshot'),D.getRetry(PHOENIX+'/v1/markets/stats/latest')]);return listPhoenix(config,stats);}
  throw Error('Unsupported venue');
 }
 function book(venue,id,data,quoteTime){

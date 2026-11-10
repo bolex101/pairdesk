@@ -22,4 +22,8 @@ function record(previous,markets,now){
 function sampledHistory(store,id,now){return (store.markets?.[id]||[]).filter(r=>Number.isSafeInteger(r.t)&&r.t%BAR===0&&Number.isFinite(r.c)&&r.c>0&&r.t+BAR<=now-2000&&r.observedAt>=r.t+BAR-90000&&r.observedAt<r.t+BAR).sort((a,b)=>a.t-b.t).map(r=>({t:r.t,c:r.c,volume:null}));}
 // Transient failures (timeouts, 429, 5xx) are retried with jittered backoff; see http.cjs.
 async function get(url,options){return Http.withRetry(async()=>{const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 Pairdesk'},redirect:'error',signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Http.HttpError('Market HTTP '+r.status,r.status,r.headers?.get?.('retry-after'));return r.json();},options);}
-module.exports={VAR_URL,arcusQuote,variationalMarkets,record,sampledHistory,get};
+// Scanner-only market lists (Variational, Phoenix): longer wait-and-retry for 429/5xx/network errors
+// (Retry-After honoured), max 3 retries, ~45s total budget. Monitor/quote paths keep using get().
+async function getRetry(url,options={}){const end=Date.now()+45000;return Http.withRetry(async()=>{const left=end-Date.now();if(left<1000){const e=new Error('Market retry budget exhausted');e.permanent=true;throw e;}const r=await fetch(url,{headers:{'User-Agent':'Mozilla/5.0 Pairdesk'},redirect:'error',signal:AbortSignal.timeout(Math.min(20000,left))});if(!r.ok)throw new Http.HttpError('Market HTTP '+r.status,r.status,r.headers?.get?.('retry-after'));return r.json();},{retries:3,baseMs:2000,maxDelayMs:8000,maxWaitMs:20000,...options});}
+async function getVariational(){return getRetry(VAR_URL);}
+module.exports={VAR_URL,arcusQuote,variationalMarkets,record,sampledHistory,get,getRetry,getVariational};

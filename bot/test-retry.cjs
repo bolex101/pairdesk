@@ -22,6 +22,15 @@ const A=require('node:assert/strict'),H=require('./http.cjs');
  // Invalid JSON is not retried.
  calls=0;global.fetch=async()=>{calls++;return {ok:true,status:200,headers:{get:()=>null},json:async()=>{throw new SyntaxError('bad json');}};};
  await A.rejects(D.get('https://x.test',{sleep}),SyntaxError);A.equal(calls,1);
+ // Scanner market lists (Variational, Phoenix): getRetry waits longer (1-2s, 2-4s, 4-8s), up to 3 retries.
+ calls=0;waits.length=0;global.fetch=async()=>{calls++;return calls<=3?reply(429,{}):reply(200,{ok:2});};
+ A.deepEqual(await D.getRetry('https://x.test',{sleep,random:()=>0}),{ok:2});A.equal(calls,4);A.deepEqual(waits,[1000,2000,4000]);
+ calls=0;waits.length=0;global.fetch=async()=>{calls++;return reply(503,{},{'retry-after':'5'});};
+ await A.rejects(D.getRetry('https://x.test',{sleep,random:()=>0}),/Market HTTP 503/);A.equal(calls,4);A.deepEqual(waits,[5000,5000,5000]);
+ calls=0;global.fetch=async()=>{calls++;return reply(404,{});};
+ await A.rejects(D.getRetry('https://x.test',{sleep}),/Market HTTP 404/);A.equal(calls,1);
+ const urls2=[];calls=0;global.fetch=async url=>{urls2.push(url);calls++;return calls===1?reply(429,{}):reply(200,{v:1});};
+ A.deepEqual(await D.getVariational(),{v:1});A.deepEqual([...new Set(urls2)],[D.VAR_URL]);
  // Env override for retry count.
  process.env.PAIRDESK_HTTP_RETRIES='0';A.equal(H.settings().retries,0);process.env.PAIRDESK_HTTP_RETRIES='99';A.equal(H.settings().retries,2);delete process.env.PAIRDESK_HTTP_RETRIES;
  // Solana: configurable RPC URL, public default, cached block times, retry on 5xx.
@@ -32,5 +41,5 @@ const A=require('node:assert/strict'),H=require('./http.cjs');
  A.equal(calls,2,'second lookup served from cache');A.deepEqual([...new Set(urls)],['https://rpc.example.test/']);
  global.fetch=async()=>reply(200,{error:{message:'slot skipped'}});await A.rejects(Sol.blockTime(124,{sleep}),/unverified/);A.equal(Sol._cache.has(124),false);
  await A.rejects(Sol.blockTime(-1),/Invalid/);delete process.env.PAIRDESK_SOLANA_RPC_URL;
- console.log('Retry checks passed: jittered backoff, Retry-After, transient vs permanent, env limits, Solana RPC env and cache');
+ console.log('Retry checks passed: jittered backoff, Retry-After, transient vs permanent, scanner market-list retry, env limits, Solana RPC env and cache');
 })().catch(e=>{console.error(e);process.exit(1);});
